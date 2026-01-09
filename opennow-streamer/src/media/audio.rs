@@ -266,12 +266,12 @@ impl Drop for AudioDecoder {
 }
 
 // ============================================================================
-// Linux/Windows implementation using GStreamer
+// Linux/Windows x64 implementation using GStreamer
 // ============================================================================
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(any(target_os = "linux", all(windows, target_arch = "x86_64")))]
 impl AudioDecoder {
-    /// Create a new Opus audio decoder using GStreamer (Linux/Windows)
+    /// Create a new Opus audio decoder using GStreamer (Linux/Windows x64)
     /// Returns decoder and a receiver for decoded samples (for async operation)
     pub fn new(sample_rate: u32, channels: u32) -> Result<Self> {
         use gstreamer as gst;
@@ -419,7 +419,61 @@ impl AudioDecoder {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(any(target_os = "linux", all(windows, target_arch = "x86_64")))]
+impl Drop for AudioDecoder {
+    fn drop(&mut self) {
+        let _ = self.cmd_tx.send(AudioCommand::Stop);
+    }
+}
+
+// ============================================================================
+// Windows ARM64 - No audio decoding (GStreamer not available)
+// ============================================================================
+
+#[cfg(all(windows, target_arch = "aarch64"))]
+impl AudioDecoder {
+    /// Create a stub audio decoder for Windows ARM64
+    /// Note: GStreamer ARM64 binaries are not available, so audio is disabled
+    pub fn new(sample_rate: u32, channels: u32) -> Result<Self> {
+        warn!(
+            "Audio decoding not available on Windows ARM64 (GStreamer not available). \
+             Audio will be silent. Sample rate: {}Hz, channels: {}",
+            sample_rate, channels
+        );
+
+        let (cmd_tx, _cmd_rx) = mpsc::channel::<AudioCommand>();
+        let (_sample_tx, sample_rx) = tokio::sync::mpsc::channel::<Vec<i16>>(1);
+
+        Ok(Self {
+            cmd_tx,
+            sample_rx: Some(sample_rx),
+            sample_rate,
+            channels,
+        })
+    }
+
+    /// Take the sample receiver (for passing to audio player thread)
+    pub fn take_sample_receiver(&mut self) -> Option<tokio::sync::mpsc::Receiver<Vec<i16>>> {
+        self.sample_rx.take()
+    }
+
+    /// Decode an Opus packet asynchronously - stub that does nothing on ARM64
+    pub fn decode_async(&self, _data: &[u8]) {
+        // No-op: audio not supported on Windows ARM64
+    }
+
+    /// Get sample rate
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
+    /// Get channel count
+    pub fn channels(&self) -> u32 {
+        self.channels
+    }
+}
+
+#[cfg(all(windows, target_arch = "aarch64"))]
 impl Drop for AudioDecoder {
     fn drop(&mut self) {
         let _ = self.cmd_tx.send(AudioCommand::Stop);

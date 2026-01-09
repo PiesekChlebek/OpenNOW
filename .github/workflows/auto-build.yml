@@ -363,13 +363,15 @@ jobs:
 
           Write-Host "GStreamer ARM64 setup complete (using x64 under emulation)"
 
-      # ==================== FFmpeg + GStreamer Installation (macOS only) ====================
+      # ==================== FFmpeg Installation (macOS only) ====================
 
-      - name: Install FFmpeg and GStreamer (macOS)
+      - name: Install FFmpeg (macOS)
         if: matrix.target == 'macos'
         run: |
-          brew install ffmpeg gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly pkg-config
-          echo "FFmpeg and GStreamer installed via Homebrew"
+          brew install ffmpeg pkg-config
+          echo "FFmpeg installed via Homebrew"
+          # Note: macOS uses FFmpeg for video (VideoToolbox) and audio (Opus) decoding
+          # GStreamer is NOT used on macOS - only on Linux and Windows x64
 
       # ==================== GStreamer Installation (Linux) ====================
 
@@ -514,11 +516,17 @@ jobs:
           $gstBinDir = $env:GSTREAMER_BIN_DIR
           $gstPluginDir = $env:GSTREAMER_PLUGIN_DIR
 
-          # Create plugins directory in target
-          $pluginsTargetDir = "$targetDir\lib\gstreamer-1.0"
-          New-Item -ItemType Directory -Force -Path $pluginsTargetDir | Out-Null
+          # Create bundled GStreamer directory structure that matches what the Rust code expects:
+          # gstreamer/bin/ - Core DLLs (added to PATH)
+          # gstreamer/lib/gstreamer-1.0/ - Plugins (GST_PLUGIN_PATH)
+          $gstBundleDir = "$targetDir\gstreamer"
+          $gstBundleBin = "$gstBundleDir\bin"
+          $gstBundlePlugins = "$gstBundleDir\lib\gstreamer-1.0"
 
-          Write-Host "Copying GStreamer core DLLs to $targetDir..."
+          New-Item -ItemType Directory -Force -Path $gstBundleBin | Out-Null
+          New-Item -ItemType Directory -Force -Path $gstBundlePlugins | Out-Null
+
+          Write-Host "Copying GStreamer core DLLs to $gstBundleBin..."
 
           # Copy core GStreamer DLLs
           $coreDlls = @(
@@ -548,14 +556,14 @@ jobs:
           foreach ($dll in $coreDlls) {
             $srcPath = Join-Path $gstBinDir $dll
             if (Test-Path $srcPath) {
-              Copy-Item $srcPath -Destination $targetDir -Verbose
+              Copy-Item $srcPath -Destination $gstBundleBin -Verbose
             } else {
               Write-Host "Warning: $dll not found at $srcPath"
             }
           }
 
           # Copy essential plugins
-          Write-Host "`nCopying GStreamer plugins..."
+          Write-Host "`nCopying GStreamer plugins to $gstBundlePlugins..."
           $essentialPlugins = @(
             "gstcoreelements.dll",
             "gstapp.dll",
@@ -588,16 +596,16 @@ jobs:
           foreach ($plugin in $essentialPlugins) {
             $srcPath = Join-Path $gstPluginDir $plugin
             if (Test-Path $srcPath) {
-              Copy-Item $srcPath -Destination $pluginsTargetDir -Verbose
+              Copy-Item $srcPath -Destination $gstBundlePlugins -Verbose
             } else {
               Write-Host "Warning: Plugin $plugin not found"
             }
           }
 
-          Write-Host "`n=== Bundled GStreamer DLLs ==="
-          Get-ChildItem $targetDir -Filter "*.dll" | ForEach-Object { Write-Host "  - $($_.Name)" }
-          Write-Host "`n=== Bundled GStreamer Plugins ==="
-          Get-ChildItem $pluginsTargetDir -Filter "*.dll" | ForEach-Object { Write-Host "  - $($_.Name)" }
+          Write-Host "`n=== Bundled GStreamer DLLs (gstreamer/bin/) ==="
+          Get-ChildItem $gstBundleBin -Filter "*.dll" | ForEach-Object { Write-Host "  - $($_.Name)" }
+          Write-Host "`n=== Bundled GStreamer Plugins (gstreamer/lib/gstreamer-1.0/) ==="
+          Get-ChildItem $gstBundlePlugins -Filter "*.dll" | ForEach-Object { Write-Host "  - $($_.Name)" }
 
       - name: Bundle GStreamer DLLs (Windows ARM64)
         if: matrix.target == 'windows-arm64'
@@ -607,11 +615,17 @@ jobs:
           $gstBinDir = $env:GSTREAMER_BIN_DIR
           $gstPluginDir = $env:GSTREAMER_PLUGIN_DIR
 
-          # Create plugins directory in target
-          $pluginsTargetDir = "$targetDir\lib\gstreamer-1.0"
-          New-Item -ItemType Directory -Force -Path $pluginsTargetDir | Out-Null
+          # Create bundled GStreamer directory structure that matches what the Rust code expects:
+          # gstreamer/bin/ - Core DLLs (added to PATH)
+          # gstreamer/lib/gstreamer-1.0/ - Plugins (GST_PLUGIN_PATH)
+          $gstBundleDir = "$targetDir\gstreamer"
+          $gstBundleBin = "$gstBundleDir\bin"
+          $gstBundlePlugins = "$gstBundleDir\lib\gstreamer-1.0"
 
-          Write-Host "Copying GStreamer core DLLs to $targetDir..."
+          New-Item -ItemType Directory -Force -Path $gstBundleBin | Out-Null
+          New-Item -ItemType Directory -Force -Path $gstBundlePlugins | Out-Null
+
+          Write-Host "Copying GStreamer core DLLs to $gstBundleBin..."
 
           # Copy core GStreamer DLLs
           $coreDlls = @(
@@ -641,14 +655,14 @@ jobs:
           foreach ($dll in $coreDlls) {
             $srcPath = Join-Path $gstBinDir $dll
             if (Test-Path $srcPath) {
-              Copy-Item $srcPath -Destination $targetDir -Verbose
+              Copy-Item $srcPath -Destination $gstBundleBin -Verbose
             } else {
               Write-Host "Warning: $dll not found at $srcPath"
             }
           }
 
           # Copy essential plugins
-          Write-Host "`nCopying GStreamer plugins..."
+          Write-Host "`nCopying GStreamer plugins to $gstBundlePlugins..."
           $essentialPlugins = @(
             "gstcoreelements.dll",
             "gstapp.dll",
@@ -681,16 +695,16 @@ jobs:
           foreach ($plugin in $essentialPlugins) {
             $srcPath = Join-Path $gstPluginDir $plugin
             if (Test-Path $srcPath) {
-              Copy-Item $srcPath -Destination $pluginsTargetDir -Verbose
+              Copy-Item $srcPath -Destination $gstBundlePlugins -Verbose
             } else {
               Write-Host "Warning: Plugin $plugin not found"
             }
           }
 
-          Write-Host "`n=== Bundled GStreamer DLLs ==="
-          Get-ChildItem $targetDir -Filter "*.dll" | ForEach-Object { Write-Host "  - $($_.Name)" }
-          Write-Host "`n=== Bundled GStreamer Plugins ==="
-          Get-ChildItem $pluginsTargetDir -Filter "*.dll" | ForEach-Object { Write-Host "  - $($_.Name)" }
+          Write-Host "`n=== Bundled GStreamer DLLs (gstreamer/bin/) ==="
+          Get-ChildItem $gstBundleBin -Filter "*.dll" | ForEach-Object { Write-Host "  - $($_.Name)" }
+          Write-Host "`n=== Bundled GStreamer Plugins (gstreamer/lib/gstreamer-1.0/) ==="
+          Get-ChildItem $gstBundlePlugins -Filter "*.dll" | ForEach-Object { Write-Host "  - $($_.Name)" }
 
       - name: Bundle macOS App
         if: matrix.target == 'macos' || matrix.target == 'macos-intel'
@@ -811,86 +825,8 @@ jobs:
              done
           done
 
-          echo ""
-          echo "=== Phase 1b: Explicitly copy GStreamer libraries ==="
-          # GStreamer libraries for macOS
-
-          GSTREAMER_PREFIX=$(brew --prefix gstreamer)
-          echo "GStreamer prefix: $GSTREAMER_PREFIX"
-
-          # Core GStreamer libraries
-          GSTREAMER_LIBS=(
-            "libgstreamer-1.0"
-            "libgstbase-1.0"
-            "libgstapp-1.0"
-            "libgstaudio-1.0"
-            "libgstvideo-1.0"
-            "libgstpbutils-1.0"
-            "libgstrtp-1.0"
-            "libgstrtsp-1.0"
-            "libgstsdp-1.0"
-            "libgstwebrtc-1.0"
-            "libgstcodecs-1.0"
-            "libgstgl-1.0"
-          )
-
-          for lib_base in "${GSTREAMER_LIBS[@]}"; do
-             echo "Looking for $lib_base in $GSTREAMER_PREFIX/lib..."
-             FOUND_LIBS=$(find "$GSTREAMER_PREFIX/lib" -name "${lib_base}*.dylib" -type f 2>/dev/null || true)
-
-             for lib in $FOUND_LIBS; do
-                echo "Found GStreamer lib: $lib"
-                copy_lib "$lib"
-             done
-          done
-
-          # Also copy GLib dependencies (required by GStreamer)
-          GLIB_PREFIX=$(brew --prefix glib)
-          echo "GLib prefix: $GLIB_PREFIX"
-
-          GLIB_LIBS=(
-            "libglib-2.0"
-            "libgobject-2.0"
-            "libgmodule-2.0"
-            "libgio-2.0"
-            "libgthread-2.0"
-          )
-
-          for lib_base in "${GLIB_LIBS[@]}"; do
-             echo "Looking for $lib_base in $GLIB_PREFIX/lib..."
-             FOUND_LIBS=$(find "$GLIB_PREFIX/lib" -name "${lib_base}*.dylib" -type f 2>/dev/null || true)
-
-             for lib in $FOUND_LIBS; do
-                echo "Found GLib lib: $lib"
-                copy_lib "$lib"
-             done
-          done
-
-          # Copy GStreamer plugins
-          echo ""
-          echo "=== Phase 1c: Copy GStreamer plugins ==="
-          # Put plugins in Frameworks directory (not PlugIns) to avoid code signing issues
-          GST_PLUGINS_DIR="$FRAMEWORKS_DIR/gstreamer-1.0"
-          mkdir -p "$GST_PLUGINS_DIR"
-
-          # Find plugins from various plugin packages
-          for plugin_pkg in gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly; do
-            PLUGIN_PREFIX=$(brew --prefix $plugin_pkg 2>/dev/null || true)
-            if [ -d "$PLUGIN_PREFIX/lib/gstreamer-1.0" ]; then
-              echo "Copying plugins from $plugin_pkg..."
-              for plugin in "$PLUGIN_PREFIX/lib/gstreamer-1.0/"*.dylib; do
-                if [ -f "$plugin" ]; then
-                  plugin_name=$(basename "$plugin")
-                  if [ ! -f "$GST_PLUGINS_DIR/$plugin_name" ]; then
-                    echo "  Copying plugin: $plugin_name"
-                    cp "$plugin" "$GST_PLUGINS_DIR/"
-                    chmod 755 "$GST_PLUGINS_DIR/$plugin_name"
-                  fi
-                fi
-              done
-            fi
-          done
-
+          # Note: GStreamer is NOT used on macOS - only FFmpeg is used for video/audio decoding
+          # GStreamer is only used on Linux and Windows x64
 
           echo ""
           echo "=== Phase 2: Copy direct dependencies detected by otool ==="
@@ -984,30 +920,6 @@ jobs:
             done
           fi
 
-          # Fix GStreamer plugin references
-          echo "Fixing GStreamer plugin references..."
-          if [ -d "$FRAMEWORKS_DIR/gstreamer-1.0" ]; then
-            for plugin in "$FRAMEWORKS_DIR/gstreamer-1.0/"*.dylib; do
-               [ -f "$plugin" ] || continue
-               # Fix Homebrew path references to point to parent Frameworks dir
-               for dep in $(otool -L "$plugin" 2>/dev/null | grep -E '/opt/homebrew|/usr/local' | awk '{print $1}'); do
-                  depname=$(basename "$dep")
-                  if [ -f "$FRAMEWORKS_DIR/$depname" ]; then
-                      echo "  Fixing ref in $(basename "$plugin") to $depname"
-                      install_name_tool -change "$dep" "@loader_path/../$depname" "$plugin" 2>/dev/null || true
-                  fi
-               done
-               # Fix @rpath references
-               for dep in $(otool -L "$plugin" 2>/dev/null | grep "@rpath/" | awk '{print $1}'); do
-                  filename="${dep#@rpath/}"
-                  if [ -f "$FRAMEWORKS_DIR/$filename" ]; then
-                      echo "  Rewriting @rpath ref in $(basename "$plugin"): $dep -> @loader_path/../$filename"
-                      install_name_tool -change "$dep" "@loader_path/../$filename" "$plugin" 2>/dev/null || true
-                  fi
-               done
-            done
-          fi
-
           echo ""
           echo "=== Final verification ==="
           echo "Binary dependencies:"
@@ -1028,16 +940,6 @@ jobs:
           echo ""
           echo "=== Phase 5: Code Signing ==="
           echo "Signing app bundle..."
-
-          # Sign GStreamer plugins individually first (they're in Frameworks/gstreamer-1.0)
-          if [ -d "$FRAMEWORKS_DIR/gstreamer-1.0" ]; then
-            echo "Signing GStreamer plugins..."
-            for plugin in "$FRAMEWORKS_DIR/gstreamer-1.0/"*.dylib; do
-              if [ -f "$plugin" ]; then
-                codesign --force --sign - "$plugin" 2>/dev/null || true
-              fi
-            done
-          fi
 
           # Sign all dylibs in Frameworks
           echo "Signing framework libraries..."
@@ -1100,15 +1002,13 @@ jobs:
         run: |
           $releaseDir = "opennow-streamer/target/release"
           $zipName = "OpenNOW-windows-x64.zip"
-          # Include exe, dlls, and lib folder with GStreamer plugins
+          # Include exe and gstreamer folder (contains bin/ with DLLs and lib/gstreamer-1.0/ with plugins)
           $items = @(
             "$releaseDir\opennow-streamer.exe"
           )
-          # Add all DLLs
-          $items += Get-ChildItem "$releaseDir\*.dll" | ForEach-Object { $_.FullName }
-          # Add lib folder if it exists (contains GStreamer plugins)
-          if (Test-Path "$releaseDir\lib") {
-            $items += "$releaseDir\lib"
+          # Add gstreamer folder if it exists (contains bundled GStreamer runtime)
+          if (Test-Path "$releaseDir\gstreamer") {
+            $items += "$releaseDir\gstreamer"
           }
           Compress-Archive -Path $items -DestinationPath "$releaseDir\$zipName"
 
@@ -1126,15 +1026,13 @@ jobs:
         run: |
           $releaseDir = "opennow-streamer/target/aarch64-pc-windows-msvc/release"
           $zipName = "OpenNOW-windows-arm64.zip"
-          # Include exe, dlls, and lib folder with GStreamer plugins
+          # Include exe and gstreamer folder (contains bin/ with DLLs and lib/gstreamer-1.0/ with plugins)
           $items = @(
             "$releaseDir\opennow-streamer.exe"
           )
-          # Add all DLLs
-          $items += Get-ChildItem "$releaseDir\*.dll" | ForEach-Object { $_.FullName }
-          # Add lib folder if it exists (contains GStreamer plugins)
-          if (Test-Path "$releaseDir\lib") {
-            $items += "$releaseDir\lib"
+          # Add gstreamer folder if it exists (contains bundled GStreamer runtime)
+          if (Test-Path "$releaseDir\gstreamer") {
+            $items += "$releaseDir\gstreamer"
           }
           Compress-Archive -Path $items -DestinationPath "$releaseDir\$zipName"
 
