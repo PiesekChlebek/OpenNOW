@@ -3499,6 +3499,7 @@ impl Renderer {
         let login_providers = app.login_providers.clone();
         let selected_provider_index = app.selected_provider_index;
         let is_loading = app.is_loading;
+        let login_url = app.login_url.clone();
         let mut search_query = app.search_query.clone();
         let runtime = app.runtime.clone();
 
@@ -3595,6 +3596,7 @@ impl Renderer {
                             selected_provider_index,
                             &status_message,
                             is_loading,
+                            login_url.as_deref(),
                             &mut actions,
                         );
                     }

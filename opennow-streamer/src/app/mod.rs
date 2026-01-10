@@ -107,6 +107,9 @@ pub struct App {
     /// Loading state for async operations
     pub is_loading: bool,
 
+    /// Login URL for manual copy/paste if browser doesn't open
+    pub login_url: Option<String>,
+
     /// VPC ID for current provider
     pub vpc_id: Option<String>,
 
@@ -308,6 +311,7 @@ impl App {
             selected_provider_index: 0,
             show_settings: false,
             is_loading: false,
+            login_url: None,
             vpc_id: None,
             api_client: GfnApiClient::new(),
             subscription: None,
@@ -690,14 +694,16 @@ impl App {
         let auth_url = auth::build_auth_url(&pkce, port);
         let verifier = pkce.verifier.clone();
 
-        // Open browser
-        if let Err(e) = open::that(&auth_url) {
-            self.error_message = Some(format!("Failed to open browser: {}", e));
-            self.is_loading = false;
-            return;
-        }
+        // Store the URL for manual copy/paste fallback
+        self.login_url = Some(auth_url.clone());
 
-        info!("Opened browser for OAuth login");
+        // Try to open browser (don't fail if it doesn't work - user can copy URL)
+        match open::that(&auth_url) {
+            Ok(_) => info!("Opened browser for OAuth login"),
+            Err(e) => {
+                warn!("Failed to open browser: {} - user can copy URL manually", e);
+            }
+        }
 
         // Spawn task to wait for callback
         let runtime = self.runtime.clone();
@@ -794,9 +800,9 @@ impl App {
                 }
 
                 // Update HDR status in stats from frame's transfer function
-                use crate::media::{TransferFunction, ColorSpace};
+                use crate::media::{ColorSpace, TransferFunction};
                 let is_hdr = frame.transfer_function == TransferFunction::PQ
-                          || frame.transfer_function == TransferFunction::HLG;
+                    || frame.transfer_function == TransferFunction::HLG;
                 if self.stats.is_hdr != is_hdr {
                     self.stats.is_hdr = is_hdr;
                     self.stats.color_space = match frame.color_space {
@@ -811,7 +817,11 @@ impl App {
                 let new_res = format!("{}x{}", frame.width, frame.height);
                 if self.stats.resolution != new_res {
                     if !self.stats.resolution.is_empty() {
-                        log::info!("Resolution changed: {} -> {}", self.stats.resolution, new_res);
+                        log::info!(
+                            "Resolution changed: {} -> {}",
+                            self.stats.resolution,
+                            new_res
+                        );
                     }
                     self.stats.resolution = new_res;
                 }
@@ -851,6 +861,7 @@ impl App {
                     self.auth_tokens = Some(tokens.clone());
                     self.api_client.set_access_token(tokens.jwt().to_string());
                     self.is_loading = false;
+                    self.login_url = None; // Clear login URL after successful login
                     self.state = AppState::Games;
                     self.status_message = "Login successful!".to_string();
                     self.fetch_games();
