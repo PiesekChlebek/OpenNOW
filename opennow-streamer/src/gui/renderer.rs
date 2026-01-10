@@ -27,9 +27,9 @@ use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
 use super::image_cache;
 use super::screens::{
-    render_alliance_warning_dialog, render_av1_warning_dialog, render_login_screen,
-    render_session_conflict_dialog, render_session_screen, render_settings_modal,
-    render_welcome_popup,
+    render_ads_required_screen, render_alliance_warning_dialog, render_av1_warning_dialog,
+    render_login_screen, render_session_conflict_dialog, render_session_screen,
+    render_settings_modal, render_welcome_popup,
 };
 use super::shaders::{EXTERNAL_TEXTURE_SHADER, NV12_HDR_TONEMAP_SHADER, NV12_SHADER, VIDEO_SHADER};
 use super::StatsPanel;
@@ -3536,6 +3536,11 @@ impl Renderer {
         let selected_queue_server = app.selected_queue_server.clone();
         let pending_server_selection_game = app.pending_server_selection_game.clone();
 
+        // Ads state (free tier)
+        let ads_required = app.ads_required;
+        let ads_remaining_secs = app.ads_remaining_secs;
+        let ads_total_secs = app.ads_total_secs;
+
         // Get games based on current tab
         // Optimization: Home tab uses game_sections, not games_list - avoid cloning games
         let games_list: Vec<(usize, crate::app::GameInfo)> = match current_tab {
@@ -3660,13 +3665,24 @@ impl Renderer {
                         // Session screen shows loading spinner, update at 30fps for smooth animation
                         ctx.request_repaint_after(Duration::from_millis(33));
 
-                        render_session_screen(
-                            ctx,
-                            &selected_game,
-                            &status_message,
-                            &error_message,
-                            &mut actions,
-                        );
+                        // Show ads screen if ads are required (free tier)
+                        if ads_required {
+                            render_ads_required_screen(
+                                ctx,
+                                &selected_game,
+                                ads_remaining_secs,
+                                ads_total_secs,
+                                &mut actions,
+                            );
+                        } else {
+                            render_session_screen(
+                                ctx,
+                                &selected_game,
+                                &status_message,
+                                &error_message,
+                                &mut actions,
+                            );
+                        }
                     }
                     AppState::Streaming => {
                         // Render stats overlay

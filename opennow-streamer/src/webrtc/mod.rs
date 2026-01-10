@@ -318,9 +318,12 @@ pub async fn run_streaming(
     // Decoded frames are written directly to SharedFrame by the decoder thread
     // Uses UnifiedVideoDecoder to support both FFmpeg and native DXVA backends
     let (mut video_decoder, mut decode_stats_rx) =
-        match UnifiedVideoDecoder::new_async(codec, settings.decoder_backend, shared_frame.clone()) {
+        match UnifiedVideoDecoder::new_async(codec, settings.decoder_backend, shared_frame.clone())
+        {
             Ok(decoder) => decoder,
-            Err(e) => return StreamingResult::Error(format!("Failed to create video decoder: {}", e)),
+            Err(e) => {
+                return StreamingResult::Error(format!("Failed to create video decoder: {}", e))
+            }
         };
 
     // Create RTP depacketizer with correct codec
@@ -346,8 +349,27 @@ pub async fn run_streaming(
         if let Ok(audio_player) = AudioPlayer::new(48000, 2) {
             info!("Audio player thread started (async mode with jitter buffer)");
             if let Some(mut rx) = audio_sample_rx {
+                let mut total_samples: u64 = 0;
+                let mut log_interval = std::time::Instant::now();
                 while let Some(samples) = rx.blocking_recv() {
+                    if total_samples == 0 {
+                        info!(
+                            "First audio samples received by player: {} samples",
+                            samples.len()
+                        );
+                    }
+                    total_samples += samples.len() as u64;
                     audio_player.push_samples(&samples);
+
+                    // Log buffer status periodically
+                    if log_interval.elapsed().as_secs() >= 5 {
+                        info!(
+                            "Audio: {} total samples played, buffer level: {} samples",
+                            total_samples,
+                            audio_player.buffer_available()
+                        );
+                        log_interval = std::time::Instant::now();
+                    }
                 }
             }
         } else {
@@ -757,6 +779,13 @@ pub async fn run_streaming(
                     }
                     WebRtcEvent::AudioFrame(rtp_data) => {
                         // Async decode - non-blocking, samples go directly to audio player
+                        static AUDIO_PACKET_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                        let count = AUDIO_PACKET_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        if count == 0 {
+                            info!("First audio packet received: {} bytes", rtp_data.len());
+                        } else if count % 500 == 0 {
+                            debug!("Audio packets received: {}", count);
+                        }
                         audio_decoder.decode_async(&rtp_data);
                     }
                     WebRtcEvent::DataChannelOpen(label) => {

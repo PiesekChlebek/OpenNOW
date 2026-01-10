@@ -599,6 +599,153 @@ pub fn render_alliance_warning_dialog(
         });
 }
 
+/// Render the ads required screen for free tier users
+///
+/// This shows an informational screen explaining that ads are required
+/// but cannot be displayed in this client.
+pub fn render_ads_required_screen(
+    ctx: &egui::Context,
+    selected_game: &Option<GameInfo>,
+    ads_remaining_secs: u32,
+    ads_total_secs: u32,
+    actions: &mut Vec<UiAction>,
+) {
+    egui::CentralPanel::default().show(ctx, |ui| {
+        ui.vertical_centered(|ui| {
+            ui.add_space(80.0);
+
+            // Game title
+            if let Some(ref game) = selected_game {
+                ui.label(
+                    egui::RichText::new(&game.title)
+                        .size(28.0)
+                        .strong()
+                        .color(egui::Color32::WHITE),
+                );
+                ui.add_space(30.0);
+            }
+
+            // Warning icon and header
+            egui::Frame::new()
+                .fill(egui::Color32::from_rgb(60, 50, 20))
+                .corner_radius(8.0)
+                .inner_margin(egui::Margin::same(20))
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            egui::RichText::new("FREE TIER - ADS REQUIRED")
+                                .size(20.0)
+                                .strong()
+                                .color(egui::Color32::from_rgb(255, 200, 80)),
+                        );
+
+                        ui.add_space(15.0);
+
+                        ui.label(
+                            egui::RichText::new(
+                                "GeForce NOW free tier requires watching video ads\nbefore your gaming session can start.",
+                            )
+                            .size(14.0)
+                            .color(egui::Color32::LIGHT_GRAY),
+                        );
+
+                        ui.add_space(15.0);
+
+                        // Progress indicator (simulated)
+                        let progress = if ads_total_secs > 0 {
+                            1.0 - (ads_remaining_secs as f32 / ads_total_secs as f32)
+                        } else {
+                            0.0
+                        };
+
+                        ui.add(
+                            egui::ProgressBar::new(progress)
+                                .desired_width(300.0)
+                                .text(format!(
+                                    "Waiting for ads... (~{} seconds remaining)",
+                                    ads_remaining_secs
+                                )),
+                        );
+
+                        ui.add_space(20.0);
+
+                        ui.label(
+                            egui::RichText::new(
+                                "OpenNOW cannot display ads from NVIDIA's ad partner.\nYour session will timeout if ads are not watched.",
+                            )
+                            .size(12.0)
+                            .color(egui::Color32::from_rgb(255, 150, 100)),
+                        );
+
+                        ui.add_space(15.0);
+
+                        ui.separator();
+
+                        ui.add_space(10.0);
+
+                        ui.label(
+                            egui::RichText::new("Options:")
+                                .size(14.0)
+                                .strong()
+                                .color(egui::Color32::WHITE),
+                        );
+
+                        ui.add_space(8.0);
+
+                        ui.label(
+                            egui::RichText::new(
+                                "1. Subscribe to GeForce NOW Priority or Ultimate to skip ads\n2. Use the official GFN client for free tier sessions\n3. Wait - session may proceed if ads timeout (not guaranteed)",
+                            )
+                            .size(12.0)
+                            .color(egui::Color32::LIGHT_GRAY),
+                        );
+                    });
+                });
+
+            ui.add_space(30.0);
+
+            // Buttons
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 150.0);
+
+                // Continue anyway button (session may work after timeout)
+                let continue_btn = egui::Button::new(
+                    egui::RichText::new("Continue Waiting").size(14.0),
+                )
+                .fill(egui::Color32::from_rgb(60, 80, 60))
+                .min_size(egui::vec2(140.0, 35.0));
+
+                if ui.add(continue_btn).on_hover_text("Wait for the session to proceed (may timeout)").clicked() {
+                    // Just continue - the session poll loop will handle state changes
+                }
+
+                ui.add_space(20.0);
+
+                // Cancel button
+                let cancel_btn = egui::Button::new(
+                    egui::RichText::new("Cancel Session").size(14.0),
+                )
+                .fill(egui::Color32::from_rgb(100, 50, 50))
+                .min_size(egui::vec2(140.0, 35.0));
+
+                if ui.add(cancel_btn).clicked() {
+                    actions.push(UiAction::StopStreaming);
+                }
+            });
+
+            ui.add_space(20.0);
+
+            // Link to subscription page
+            ui.hyperlink_to(
+                egui::RichText::new("Learn about GeForce NOW subscriptions")
+                    .size(12.0)
+                    .color(egui::Color32::from_rgb(100, 180, 255)),
+                "https://www.nvidia.com/en-us/geforce-now/memberships/",
+            );
+        });
+    });
+}
+
 /// Render first-time welcome popup
 pub fn render_welcome_popup(ctx: &egui::Context, actions: &mut Vec<UiAction>) {
     egui::Window::new("Welcome to OpenNOW")
@@ -674,10 +821,10 @@ pub fn render_welcome_popup(ctx: &egui::Context, actions: &mut Vec<UiAction>) {
                 ui.add_space(3.0);
 
                 ui.hyperlink_to(
-                    egui::RichText::new("github.com/anthropics/opennow")
+                    egui::RichText::new("github.com/zortos293/OpenNOW")
                         .size(12.0)
                         .color(egui::Color32::from_rgb(100, 180, 255)),
-                    "https://github.com/zortos293/CustomGFNClient",
+                    "https://github.com/zortos293/OpenNOWas3",
                 );
 
                 ui.add_space(20.0);

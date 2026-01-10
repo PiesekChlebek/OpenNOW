@@ -296,11 +296,12 @@ impl AudioDecoder {
 
         thread::spawn(move || {
             // Build GStreamer pipeline for Opus decoding
-            // Try simpler pipeline first (no opusparse - works with raw Opus packets)
-            // opusdec can handle raw Opus packets directly when caps are set correctly
+            // Use opusparse to properly frame raw Opus packets from WebRTC
+            // The pipeline: appsrc -> opusparse -> opusdec -> audioconvert -> audioresample -> appsink
             let pipeline_str = format!(
                 "appsrc name=src format=time do-timestamp=true ! \
-                 opusdec ! \
+                 opusparse ! \
+                 opusdec plc=true ! \
                  audioconvert ! \
                  audioresample ! \
                  audio/x-raw,format=S16LE,rate={},channels={} ! \
@@ -329,16 +330,24 @@ impl AudioDecoder {
                 .downcast::<gst_app::AppSink>()
                 .unwrap();
 
-            // Configure appsrc for Opus data
+            // Configure appsrc for raw Opus packets
+            // channel-mapping-family=0 means RTP mapping (stereo)
             let caps = gst::Caps::builder("audio/x-opus")
                 .field("rate", sample_rate_clone as i32)
                 .field("channels", channels_clone as i32)
+                .field("channel-mapping-family", 0i32)
                 .build();
             appsrc.set_caps(Some(&caps));
             appsrc.set_format(gst::Format::Time);
 
+            // Enable live mode for low latency
+            appsrc.set_is_live(true);
+            appsrc.set_max_bytes(64 * 1024); // 64KB max buffer
+
             // Set up appsink callback
             let sample_tx_clone = sample_tx.clone();
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static DECODED_SAMPLE_COUNT: AtomicU64 = AtomicU64::new(0);
             appsink.set_callbacks(
                 gst_app::AppSinkCallbacks::builder()
                     .new_sample(move |sink| {
@@ -353,6 +362,14 @@ impl AudioDecoder {
                                         .collect();
 
                                     if !samples.is_empty() {
+                                        let count = DECODED_SAMPLE_COUNT
+                                            .fetch_add(samples.len() as u64, Ordering::Relaxed);
+                                        if count == 0 {
+                                            log::info!(
+                                                "First audio samples decoded: {} samples",
+                                                samples.len()
+                                            );
+                                        }
                                         let _ = sample_tx_clone.try_send(samples);
                                     }
                                 }
@@ -369,16 +386,53 @@ impl AudioDecoder {
                 return;
             }
 
+            // Check for pipeline errors on bus
+            let bus = pipeline.bus().unwrap();
+            std::thread::spawn(move || {
+                for msg in bus.iter_timed(gst::ClockTime::NONE) {
+                    use gst::MessageView;
+                    match msg.view() {
+                        MessageView::Error(err) => {
+                            error!("GStreamer audio error: {} ({:?})", err.error(), err.debug());
+                        }
+                        MessageView::Warning(warn) => {
+                            warn!(
+                                "GStreamer audio warning: {} ({:?})",
+                                warn.error(),
+                                warn.debug()
+                            );
+                        }
+                        MessageView::Eos(..) => {
+                            debug!("GStreamer audio EOS");
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+
             info!("Opus audio decoder initialized (GStreamer, async mode)");
 
+            let mut packets_pushed = 0u64;
             while let Ok(cmd) = cmd_rx.recv() {
                 match cmd {
                     AudioCommand::DecodeAsync(data) => {
                         if !data.is_empty() {
+                            let data_len = data.len();
                             // Push Opus packet to GStreamer pipeline
                             let buffer = gst::Buffer::from_slice(data);
-                            if let Err(e) = appsrc.push_buffer(buffer) {
-                                debug!("Failed to push audio buffer: {:?}", e);
+                            match appsrc.push_buffer(buffer) {
+                                Ok(_) => {
+                                    packets_pushed += 1;
+                                    if packets_pushed == 1 {
+                                        info!("First Opus packet pushed to GStreamer pipeline: {} bytes", data_len);
+                                    } else if packets_pushed % 1000 == 0 {
+                                        debug!("Audio packets pushed: {}", packets_pushed);
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!("Failed to push audio buffer: {:?}", e);
+                                }
                             }
                         }
                     }
@@ -696,15 +750,16 @@ impl AudioResampler {
                     output.push(mono);
                 }
                 2 => {
-                    // Stereo: direct pass-through
-                    output.push(stereo_frame[0]);
-                    output.push(stereo_frame[1]);
+                    // Stereo: swap L/R channels (GFN sends them inverted)
+                    output.push(stereo_frame[1]); // Right -> Left
+                    output.push(stereo_frame[0]); // Left -> Right
                 }
                 _ => {
                     // Multi-channel (5.1, 7.1, etc.)
                     // Standard layout: FL, FR, FC, LFE, BL, BR, [SL, SR for 7.1+]
-                    let left = stereo_frame[0];
-                    let right = stereo_frame[1];
+                    // Swap L/R channels (GFN sends them inverted)
+                    let left = stereo_frame[1];
+                    let right = stereo_frame[0];
 
                     for ch_idx in 0..out_ch {
                         let sample = match ch_idx {

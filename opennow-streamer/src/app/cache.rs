@@ -396,6 +396,7 @@ pub fn save_session_cache(session: &SessionInfo) {
                     "port": mci.port,
                 })
             }),
+            "ads_required": session.ads_required,
         });
         if let Ok(json) = serde_json::to_string(&cache) {
             let _ = std::fs::write(path, json);
@@ -456,6 +457,11 @@ pub fn load_session_cache() -> Option<SessionInfo> {
             .map(|s| s.to_string()),
         ice_servers: Vec::new(),
         media_connection_info,
+        ads_required: cache
+            .get("ads_required")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        ads_info: None, // Ads info not persisted to cache
     })
 }
 

@@ -553,7 +553,7 @@ impl VideoDecoder {
                     let mut decoder = gst_decoder;
                     let mut frames_decoded = 0u64;
                     let mut consecutive_failures = 0u32;
-                    const KEYFRAME_REQUEST_THRESHOLD: u32 = 10;
+                    const KEYFRAME_REQUEST_THRESHOLD: u32 = 3; // Lowered from 10 for faster recovery
                     const FRAMES_TO_SKIP: u64 = 5;
 
                     while let Ok(cmd) = cmd_rx.recv() {
@@ -705,7 +705,7 @@ impl VideoDecoder {
             let mut frames_decoded = 0u64;
             let mut consecutive_failures = 0u32;
             let mut packets_received = 0u64;
-            const KEYFRAME_REQUEST_THRESHOLD: u32 = 10; // Request keyframe after 10 consecutive failures (was 30)
+            const KEYFRAME_REQUEST_THRESHOLD: u32 = 3; // Lowered from 10 for faster recovery after focus loss
             const FRAMES_TO_SKIP: u64 = 5; // Skip first N frames to let decoder settle with reference frames
 
             while let Ok(cmd) = cmd_rx.recv() {
@@ -2510,8 +2510,8 @@ impl UnifiedVideoDecoder {
 
 #[cfg(all(windows, target_arch = "x86_64"))]
 impl GStreamerDecoderWrapper {
-    /// Threshold for requesting a keyframe after consecutive failures
-    const KEYFRAME_REQUEST_THRESHOLD: u32 = 10;
+    /// Threshold for requesting a keyframe after consecutive failures (lowered for faster recovery)
+    const KEYFRAME_REQUEST_THRESHOLD: u32 = 3;
 
     /// Decode a frame asynchronously and write to SharedFrame
     pub fn decode_async(&mut self, data: &[u8], receive_time: std::time::Instant) {

@@ -418,6 +418,14 @@ impl ApplicationHandler for OpenNowApp {
                             // Resume raw input
                             #[cfg(any(target_os = "windows", target_os = "macos"))]
                             input::resume_raw_input();
+
+                            // Request keyframe to recover video stream after focus loss
+                            // This prevents freeze caused by corrupted NAL data during unfocused state
+                            let runtime = self.runtime.clone();
+                            runtime.spawn(async {
+                                log::info!("Requesting keyframe after focus regain");
+                                webrtc::request_keyframe().await;
+                            });
                         }
                     }
                 }

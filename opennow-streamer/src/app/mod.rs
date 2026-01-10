@@ -207,6 +207,15 @@ pub struct App {
 
     /// Pending game for server selection (stored when showing modal)
     pub pending_server_selection_game: Option<GameInfo>,
+
+    /// Whether session requires ads (free tier)
+    pub ads_required: bool,
+
+    /// Ads remaining seconds (for countdown display)
+    pub ads_remaining_secs: u32,
+
+    /// Ads total duration in seconds
+    pub ads_total_secs: u32,
 }
 
 /// Poll interval for session status (2 seconds)
@@ -252,6 +261,9 @@ impl App {
         });
 
         // Start checking active sessions if we have a token
+        // Clear stale cache first to ensure we always use fresh data from API
+        cache::clear_active_sessions_cache();
+
         if has_token {
             let rt = runtime.clone();
             let token = auth_tokens.as_ref().unwrap().jwt().to_string();
@@ -264,7 +276,10 @@ impl App {
                             "Checked active sessions at startup: found {}",
                             sessions.len()
                         );
-                        cache::save_active_sessions_cache(&sessions);
+                        // Only save to cache if we have sessions - this is fresh data from API
+                        if !sessions.is_empty() {
+                            cache::save_active_sessions_cache(&sessions);
+                        }
                     }
                     Err(e) => {
                         warn!("Failed to check active sessions at startup: {}", e);
@@ -350,6 +365,9 @@ impl App {
             show_server_selection: false,
             selected_queue_server: None,
             pending_server_selection_game: None,
+            ads_required: false,
+            ads_remaining_secs: 0,
+            ads_total_secs: 0,
         }
     }
 
@@ -1703,7 +1721,13 @@ impl App {
 
     /// Resume an existing session
     fn resume_session(&mut self, session_info: ActiveSessionInfo) {
-        info!("Resuming session: {}", session_info.session_id);
+        info!(
+            "Resuming session: {} (status: {}, server_ip: {:?}, signaling_url: {:?})",
+            session_info.session_id,
+            session_info.status,
+            session_info.server_ip,
+            session_info.signaling_url
+        );
 
         self.show_session_conflict = false;
         self.pending_game_launch = None;
@@ -1712,6 +1736,11 @@ impl App {
         self.error_message = None;
         self.is_loading = true;
         self.last_poll_time = std::time::Instant::now() - POLL_INTERVAL;
+
+        // Session status codes:
+        // 2 = Ready (needs RESUME PUT to re-attach client)
+        // 3 = Streaming (also needs RESUME PUT to re-attach client)
+        // Both status 2 and 3 need the claim/resume PUT request
 
         let token = match &self.auth_tokens {
             Some(t) => t.jwt().to_string(),
@@ -1833,6 +1862,16 @@ impl App {
                 }
             } else if let SessionState::InQueue { position, eta_secs } = session.state {
                 self.status_message = format!("Queue position: {} (ETA: {}s)", position, eta_secs);
+            } else if let SessionState::WatchingAds {
+                remaining_secs,
+                total_secs,
+            } = session.state
+            {
+                self.ads_required = true;
+                self.ads_remaining_secs = remaining_secs;
+                self.ads_total_secs = total_secs;
+                self.status_message =
+                    format!("Waiting for ads... (~{}s remaining)", remaining_secs);
             } else if let SessionState::Error(ref msg) = session.state {
                 self.error_message = Some(msg.clone());
                 self.is_loading = false;
@@ -1864,6 +1903,7 @@ impl App {
                     | SessionState::CleaningUp
                     | SessionState::WaitingForStorage
                     | SessionState::InQueue { .. }
+                    | SessionState::WatchingAds { .. }
             );
 
             // Also poll if Ready but count < 3
@@ -2134,6 +2174,11 @@ impl App {
 
         // Reset session ready poll count for next session
         self.session_ready_poll_count = 0;
+
+        // Reset ads state
+        self.ads_required = false;
+        self.ads_remaining_secs = 0;
+        self.ads_total_secs = 0;
 
         self.status_message = "Stream ended".to_string();
     }

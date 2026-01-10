@@ -114,7 +114,7 @@ impl NativeVideoDecoder {
 
             let mut frames_decoded = 0u64;
             let mut consecutive_failures = 0u32;
-            const KEYFRAME_REQUEST_THRESHOLD: u32 = 10;
+            const KEYFRAME_REQUEST_THRESHOLD: u32 = 3; // Lowered from 10 for faster recovery after focus loss
 
             while let Ok(cmd) = cmd_rx.recv() {
                 match cmd {
@@ -190,7 +190,8 @@ impl NativeVideoDecoder {
                                 Err(e) => {
                                     consecutive_failures += 1;
                                     // Log first few failures and then periodically
-                                    if consecutive_failures <= 5 || consecutive_failures % 100 == 0 {
+                                    if consecutive_failures <= 5 || consecutive_failures % 100 == 0
+                                    {
                                         warn!(
                                             "Native HEVC decode failed (failure #{}): {:?}",
                                             consecutive_failures, e
@@ -274,7 +275,10 @@ impl NativeVideoDecoder {
             Ok(planes) => {
                 info!(
                     "Frame copied: poc={}, y_size={}, uv_size={}, stride={}",
-                    decoded.poc, planes.y_plane.len(), planes.uv_plane.len(), planes.y_stride
+                    decoded.poc,
+                    planes.y_plane.len(),
+                    planes.uv_plane.len(),
+                    planes.y_stride
                 );
 
                 // Return VideoFrame with CPU plane data
@@ -312,7 +316,10 @@ impl NativeVideoDecoder {
                 })
             }
             Err(e) => {
-                warn!("Failed to copy decoded frame (poc={}): {:?}", decoded.poc, e);
+                warn!(
+                    "Failed to copy decoded frame (poc={}): {:?}",
+                    decoded.poc, e
+                );
                 None
             }
         }

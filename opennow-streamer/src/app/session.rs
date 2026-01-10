@@ -30,6 +30,12 @@ pub struct SessionInfo {
 
     /// Media connection info (real UDP port for streaming)
     pub media_connection_info: Option<MediaConnectionInfo>,
+
+    /// Whether ads are required for this session (free tier)
+    pub ads_required: bool,
+
+    /// Ad configuration if ads are required
+    pub ads_info: Option<SessionAdsInfo>,
 }
 
 /// ICE server configuration
@@ -49,6 +55,27 @@ pub struct MediaConnectionInfo {
     pub port: u16,
 }
 
+/// Session ads information for free tier users
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionAdsInfo {
+    /// Video ad URL to play
+    #[serde(default)]
+    pub video_url: Option<String>,
+
+    /// Ad duration in seconds
+    #[serde(default)]
+    pub duration_secs: u32,
+
+    /// Tracking/completion callback URL
+    #[serde(default)]
+    pub completion_url: Option<String>,
+
+    /// Raw ad configuration from server
+    #[serde(default)]
+    pub raw_config: Option<serde_json::Value>,
+}
+
 /// Session state
 #[derive(Debug, Clone, PartialEq)]
 pub enum SessionState {
@@ -62,9 +89,14 @@ pub enum SessionState {
     Launching,
 
     /// In queue waiting for a seat (seatSetupStep = 1)
-    InQueue {
-        position: u32,
-        eta_secs: u32,
+    InQueue { position: u32, eta_secs: u32 },
+
+    /// Watching ads (free tier users during queue)
+    WatchingAds {
+        /// Time remaining in seconds
+        remaining_secs: u32,
+        /// Total ad duration in seconds
+        total_secs: u32,
     },
 
     /// Cleaning up previous session (seatSetupStep = 5)
@@ -98,6 +130,8 @@ impl SessionInfo {
             signaling_url: None,
             ice_servers: Vec::new(),
             media_connection_info: None,
+            ads_required: false,
+            ads_info: None,
         }
     }
 
@@ -254,6 +288,12 @@ pub struct CloudMatchSession {
     pub error_code: i32,
     #[serde(default)]
     pub ice_server_configuration: Option<IceServerConfiguration>,
+    /// Whether ads are required for this session (free tier)
+    #[serde(default)]
+    pub session_ads_required: bool,
+    /// Ad configuration data from server
+    #[serde(default)]
+    pub session_ads: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -341,9 +381,9 @@ impl CloudMatchSession {
                 conn.ip.clone().or_else(|| {
                     // If IP is null, extract from resourcePath (Alliance format)
                     // e.g., "rtsps://161-248-11-132.bpc.geforcenow.nvidiagrid.net:48322"
-                    conn.resource_path.as_ref().and_then(|path| {
-                        Self::extract_host_from_url(path)
-                    })
+                    conn.resource_path
+                        .as_ref()
+                        .and_then(|path| Self::extract_host_from_url(path))
                 })
             })
             .or_else(|| {
@@ -387,19 +427,25 @@ impl CloudMatchSession {
     pub fn media_connection_info(&self) -> Option<MediaConnectionInfo> {
         self.connection_info.as_ref().and_then(|conns| {
             // Try standard media paths first (usage=2 or usage=17)
-            let media_conn = conns.iter()
+            let media_conn = conns
+                .iter()
                 .find(|c| c.usage == 2)
                 .or_else(|| conns.iter().find(|c| c.usage == 17));
 
             // If found, try to get IP/port
             if let Some(conn) = media_conn {
                 let ip = conn.ip.clone().or_else(|| {
-                    conn.resource_path.as_ref().and_then(|p| Self::extract_host_from_url(p))
+                    conn.resource_path
+                        .as_ref()
+                        .and_then(|p| Self::extract_host_from_url(p))
                 });
                 let port = if conn.port > 0 {
                     conn.port
                 } else {
-                    conn.resource_path.as_ref().and_then(|p| Self::extract_port_from_url(p)).unwrap_or(0)
+                    conn.resource_path
+                        .as_ref()
+                        .and_then(|p| Self::extract_port_from_url(p))
+                        .unwrap_or(0)
                 };
 
                 if let Some(ip) = ip {
@@ -411,21 +457,28 @@ impl CloudMatchSession {
 
             // For Alliance: fall back to usage=14 with highest port (usually the UDP streaming port)
             // Alliance sessions have usage=14 for both signaling and media
-            let alliance_conn = conns.iter()
+            let alliance_conn = conns
+                .iter()
                 .filter(|c| c.usage == 14)
                 .max_by_key(|c| c.port);
 
             alliance_conn.and_then(|conn| {
                 let ip = conn.ip.clone().or_else(|| {
-                    conn.resource_path.as_ref().and_then(|p| Self::extract_host_from_url(p))
+                    conn.resource_path
+                        .as_ref()
+                        .and_then(|p| Self::extract_host_from_url(p))
                 });
                 let port = if conn.port > 0 {
                     conn.port
                 } else {
-                    conn.resource_path.as_ref().and_then(|p| Self::extract_port_from_url(p)).unwrap_or(0)
+                    conn.resource_path
+                        .as_ref()
+                        .and_then(|p| Self::extract_port_from_url(p))
+                        .unwrap_or(0)
                 };
 
-                ip.filter(|_| port > 0).map(|ip| MediaConnectionInfo { ip, port })
+                ip.filter(|_| port > 0)
+                    .map(|ip| MediaConnectionInfo { ip, port })
             })
         })
     }
@@ -455,13 +508,15 @@ impl CloudMatchSession {
         self.ice_server_configuration
             .as_ref()
             .map(|config| {
-                config.ice_servers.iter().map(|server| {
-                    IceServerConfig {
+                config
+                    .ice_servers
+                    .iter()
+                    .map(|server| IceServerConfig {
                         urls: vec![server.urls.clone()],
                         username: server.username.clone(),
                         credential: server.credential.clone(),
-                    }
-                }).collect()
+                    })
+                    .collect()
             })
             .unwrap_or_default()
     }
