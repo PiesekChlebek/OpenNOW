@@ -910,14 +910,12 @@ jobs:
           echo "Bundled $LIB_COUNT libraries and $PLUGIN_COUNT plugins"
 
           # Create wrapper script that sets library paths
-          cat > "$BUNDLE_DIR/run.sh" << 'WRAPPER'
-#!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"
-export GST_PLUGIN_PATH="$SCRIPT_DIR/lib/gstreamer-1.0"
-export GST_PLUGIN_SYSTEM_PATH=""
-exec "$SCRIPT_DIR/opennow-streamer" "$@"
-WRAPPER
+          echo '#!/bin/bash' > "$BUNDLE_DIR/run.sh"
+          echo 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' >> "$BUNDLE_DIR/run.sh"
+          echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"' >> "$BUNDLE_DIR/run.sh"
+          echo 'export GST_PLUGIN_PATH="$SCRIPT_DIR/lib/gstreamer-1.0"' >> "$BUNDLE_DIR/run.sh"
+          echo 'export GST_PLUGIN_SYSTEM_PATH=""' >> "$BUNDLE_DIR/run.sh"
+          echo 'exec "$SCRIPT_DIR/opennow-streamer" "$@"' >> "$BUNDLE_DIR/run.sh"
           chmod +x "$BUNDLE_DIR/run.sh"
 
           echo ""
@@ -1049,14 +1047,12 @@ WRAPPER
           echo "Bundled $LIB_COUNT libraries and $PLUGIN_COUNT plugins"
 
           # Create wrapper script that sets library paths
-          cat > "$BUNDLE_DIR/run.sh" << 'WRAPPER'
-#!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"
-export GST_PLUGIN_PATH="$SCRIPT_DIR/lib/gstreamer-1.0"
-export GST_PLUGIN_SYSTEM_PATH=""
-exec "$SCRIPT_DIR/opennow-streamer" "$@"
-WRAPPER
+          echo '#!/bin/bash' > "$BUNDLE_DIR/run.sh"
+          echo 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' >> "$BUNDLE_DIR/run.sh"
+          echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"' >> "$BUNDLE_DIR/run.sh"
+          echo 'export GST_PLUGIN_PATH="$SCRIPT_DIR/lib/gstreamer-1.0"' >> "$BUNDLE_DIR/run.sh"
+          echo 'export GST_PLUGIN_SYSTEM_PATH=""' >> "$BUNDLE_DIR/run.sh"
+          echo 'exec "$SCRIPT_DIR/opennow-streamer" "$@"' >> "$BUNDLE_DIR/run.sh"
           chmod +x "$BUNDLE_DIR/run.sh"
 
           echo ""
