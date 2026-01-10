@@ -29,6 +29,7 @@ use super::image_cache;
 use super::screens::{
     render_alliance_warning_dialog, render_av1_warning_dialog, render_login_screen,
     render_session_conflict_dialog, render_session_screen, render_settings_modal,
+    render_welcome_popup,
 };
 use super::shaders::{EXTERNAL_TEXTURE_SHADER, NV12_HDR_TONEMAP_SHADER, NV12_SHADER, VIDEO_SHADER};
 use super::StatsPanel;
@@ -3500,6 +3501,7 @@ impl Renderer {
         let selected_provider_index = app.selected_provider_index;
         let is_loading = app.is_loading;
         let login_url = app.login_url.clone();
+        let show_welcome_popup = app.show_welcome_popup;
         let mut search_query = app.search_query.clone();
         let runtime = app.runtime.clone();
 
@@ -3599,6 +3601,11 @@ impl Renderer {
                             login_url.as_deref(),
                             &mut actions,
                         );
+
+                        // Show welcome popup for first-time users
+                        if show_welcome_popup {
+                            render_welcome_popup(ctx, &mut actions);
+                        }
                     }
                     AppState::Games => {
                         // Update image cache for async loading

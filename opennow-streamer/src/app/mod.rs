@@ -158,6 +158,9 @@ pub struct App {
     /// Whether showing Alliance experimental warning dialog
     pub show_alliance_warning: bool,
 
+    /// Whether showing first-time welcome popup
+    pub show_welcome_popup: bool,
+
     /// Pending game launch (waiting for session conflict resolution)
     pub pending_game_launch: Option<GameInfo>,
 
@@ -328,6 +331,7 @@ impl App {
             show_session_conflict: false,
             show_av1_warning: false,
             show_alliance_warning: false,
+            show_welcome_popup: !cache::has_shown_welcome(),
 
             pending_game_launch: None,
             last_poll_time: std::time::Instant::now(),
@@ -581,6 +585,10 @@ impl App {
             }
             UiAction::CloseAllianceWarning => {
                 self.show_alliance_warning = false;
+            }
+            UiAction::CloseWelcomePopup => {
+                self.show_welcome_popup = false;
+                cache::mark_welcome_shown();
             }
             UiAction::ResetSettings => {
                 info!("Resetting all settings to defaults");

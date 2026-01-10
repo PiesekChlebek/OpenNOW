@@ -743,3 +743,26 @@ pub fn clear_queue_cache() {
         let _ = std::fs::remove_file(path);
     }
 }
+
+// ============================================================
+// Welcome Shown Flag (first-time user experience)
+// ============================================================
+
+fn welcome_shown_path() -> Option<PathBuf> {
+    get_app_data_dir().map(|p| p.join("welcome_shown"))
+}
+
+/// Check if the welcome popup has been shown before
+pub fn has_shown_welcome() -> bool {
+    welcome_shown_path().map(|p| p.exists()).unwrap_or(false)
+}
+
+/// Mark the welcome popup as shown
+pub fn mark_welcome_shown() {
+    if let Some(path) = welcome_shown_path() {
+        // Just create an empty file as a marker
+        if let Err(e) = std::fs::write(&path, "1") {
+            warn!("Failed to save welcome shown flag: {}", e);
+        }
+    }
+}

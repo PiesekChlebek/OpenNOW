@@ -259,6 +259,8 @@ pub enum UiAction {
     CloseAV1Warning,
     /// Close Alliance experimental warning dialog
     CloseAllianceWarning,
+    /// Close welcome popup
+    CloseWelcomePopup,
     /// Reset all settings to defaults
     ResetSettings,
     /// Set queue sort mode

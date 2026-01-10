@@ -598,3 +598,98 @@ pub fn render_alliance_warning_dialog(
             });
         });
 }
+
+/// Render first-time welcome popup
+pub fn render_welcome_popup(ctx: &egui::Context, actions: &mut Vec<UiAction>) {
+    egui::Window::new("Welcome to OpenNOW")
+        .collapsible(false)
+        .resizable(false)
+        .fixed_size([450.0, 280.0])
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(15.0);
+
+                // Logo
+                ui.label(
+                    egui::RichText::new("OpenNOW")
+                        .size(32.0)
+                        .color(egui::Color32::from_rgb(118, 185, 0))
+                        .strong(),
+                );
+
+                ui.add_space(8.0);
+
+                ui.label(
+                    egui::RichText::new("Open Source GeForce NOW Client")
+                        .size(14.0)
+                        .color(egui::Color32::from_rgb(180, 180, 180)),
+                );
+
+                ui.add_space(20.0);
+
+                // Beta warning badge
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgb(80, 60, 20))
+                    .corner_radius(6.0)
+                    .inner_margin(egui::Margin {
+                        left: 14,
+                        right: 14,
+                        top: 6,
+                        bottom: 6,
+                    })
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new("BETA")
+                                .size(14.0)
+                                .color(egui::Color32::from_rgb(255, 200, 80))
+                                .strong(),
+                        );
+                    });
+
+                ui.add_space(15.0);
+
+                ui.label(
+                    egui::RichText::new("This software is still in beta.")
+                        .size(14.0)
+                        .color(egui::Color32::from_rgb(255, 200, 80)),
+                );
+
+                ui.add_space(8.0);
+
+                ui.label(
+                    egui::RichText::new("You may encounter bugs and issues.")
+                        .size(13.0)
+                        .color(egui::Color32::from_rgb(180, 180, 180)),
+                );
+
+                ui.add_space(5.0);
+
+                ui.label(
+                    egui::RichText::new("Please report any problems to our GitHub:")
+                        .size(12.0)
+                        .color(egui::Color32::GRAY),
+                );
+
+                ui.add_space(3.0);
+
+                ui.hyperlink_to(
+                    egui::RichText::new("github.com/anthropics/opennow")
+                        .size(12.0)
+                        .color(egui::Color32::from_rgb(100, 180, 255)),
+                    "https://github.com/zortos293/CustomGFNClient",
+                );
+
+                ui.add_space(20.0);
+
+                let continue_btn =
+                    egui::Button::new(egui::RichText::new("Continue").size(14.0).strong())
+                        .fill(egui::Color32::from_rgb(118, 185, 0))
+                        .min_size(egui::vec2(120.0, 36.0));
+
+                if ui.add(continue_btn).clicked() {
+                    actions.push(UiAction::CloseWelcomePopup);
+                }
+            });
+        });
+}
