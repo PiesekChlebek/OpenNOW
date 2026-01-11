@@ -66,6 +66,12 @@ pub struct Settings {
     /// Borderless fullscreen
     pub borderless: bool,
 
+    /// Window width (0 = use default)
+    pub window_width: u32,
+
+    /// Window height (0 = use default)
+    pub window_height: u32,
+
     /// Show stats panel
     pub show_stats: bool,
 
@@ -118,6 +124,8 @@ impl Default for Settings {
             // Display
             fullscreen: false,
             borderless: true,
+            window_width: 0,  // 0 = use default
+            window_height: 0, // 0 = use default
             show_stats: true,
             stats_position: StatsPosition::BottomLeft,
 

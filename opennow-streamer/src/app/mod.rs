@@ -663,6 +663,17 @@ impl App {
                     std::time::Instant::now() - std::time::Duration::from_secs(60);
                 self.fetch_queue_times();
             }
+            UiAction::UpdateWindowSize(width, height) => {
+                // Only save if size is valid and different from current
+                if width >= 640 && height >= 480 {
+                    if self.settings.window_width != width || self.settings.window_height != height
+                    {
+                        self.settings.window_width = width;
+                        self.settings.window_height = height;
+                        self.save_settings();
+                    }
+                }
+            }
         }
     }
 

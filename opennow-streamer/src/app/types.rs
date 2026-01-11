@@ -277,6 +277,8 @@ pub enum UiAction {
     LaunchWithServer(GameInfo, Option<String>),
     /// Refresh queue times
     RefreshQueueTimes,
+    /// Update window size (width, height) - saved to settings
+    UpdateWindowSize(u32, u32),
 }
 
 /// Setting changes

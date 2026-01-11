@@ -274,12 +274,23 @@ pub struct Renderer {
 impl Renderer {
     /// Create a new renderer
     pub async fn new(event_loop: &ActiveEventLoop) -> Result<Self> {
+        // Load settings to get saved window size
+        let settings = crate::app::Settings::load().unwrap_or_default();
+
         // Create window attributes
+        // Use saved window size if available, otherwise use defaults
         // ARM64 Linux: Start with smaller window to reduce initial GPU memory usage
         #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-        let initial_size = PhysicalSize::new(800, 600);
+        let default_size = PhysicalSize::new(800u32, 600u32);
         #[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
-        let initial_size = PhysicalSize::new(1280, 720);
+        let default_size = PhysicalSize::new(1280u32, 720u32);
+
+        // Use saved size if valid (non-zero and reasonable), otherwise use default
+        let initial_size = if settings.window_width >= 640 && settings.window_height >= 480 {
+            PhysicalSize::new(settings.window_width, settings.window_height)
+        } else {
+            default_size
+        };
 
         let window_attrs = WindowAttributes::default()
             .with_title("OpenNow")

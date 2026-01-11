@@ -29,7 +29,7 @@ use winit::keyboard::{Key, KeyCode, NamedKey, PhysicalKey};
 use winit::platform::scancode::PhysicalKeyExtScancode;
 use winit::window::WindowId;
 
-use app::{App, AppState};
+use app::{App, AppState, UiAction};
 use gui::Renderer;
 
 /// Application handler for winit 0.30+
@@ -262,6 +262,11 @@ impl ApplicationHandler for OpenNowApp {
             }
             WindowEvent::Resized(size) => {
                 renderer.resize(size);
+                // Save window size to settings (only when not fullscreen)
+                if !renderer.is_fullscreen() && size.width > 0 && size.height > 0 {
+                    let mut app = self.app.lock();
+                    app.handle_action(UiAction::UpdateWindowSize(size.width, size.height));
+                }
             }
             // Ctrl+Shift+Q to stop streaming (instead of ESC to avoid accidental stops)
             WindowEvent::KeyboardInput {
