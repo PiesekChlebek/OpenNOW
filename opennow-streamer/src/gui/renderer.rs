@@ -3809,6 +3809,11 @@ impl Renderer {
 
         // Check if search query changed
         if search_query != app.search_query {
+            // If user starts typing a search and is on Home tab, switch to All Games tab
+            // so they can see the filtered results
+            if !search_query.is_empty() && current_tab == GamesTab::Home {
+                actions.push(UiAction::SwitchTab(GamesTab::AllGames));
+            }
             actions.push(UiAction::UpdateSearch(search_query));
         }
 
