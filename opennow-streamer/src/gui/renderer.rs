@@ -1197,7 +1197,18 @@ impl Renderer {
     /// Toggle fullscreen with high refresh rate support
     /// Uses exclusive fullscreen to bypass the desktop compositor (DWM) for lowest latency
     /// and selects the highest available refresh rate for the current resolution
-    pub fn toggle_fullscreen(&mut self) {
+    /// Toggle fullscreen mode
+    ///
+    /// When `use_borderless` is true (default), uses borderless fullscreen which:
+    /// - Allows Alt+Tab to work properly
+    /// - Allows other windows to appear on top
+    /// - Is generally more compatible with modern Windows
+    ///
+    /// When `use_borderless` is false, tries exclusive fullscreen which:
+    /// - May provide slightly lower latency
+    /// - Takes exclusive control of the display
+    /// - May prevent Alt+Tab from working properly
+    pub fn toggle_fullscreen(&mut self, use_borderless: bool) {
         self.fullscreen = !self.fullscreen;
 
         if self.fullscreen {
@@ -1216,7 +1227,7 @@ impl Renderer {
                 return;
             }
 
-            // On other platforms, try exclusive fullscreen
+            // On other platforms, check borderless setting
             #[cfg(not(target_os = "macos"))]
             {
                 // Wayland doesn't support exclusive fullscreen - use borderless instead
@@ -1225,15 +1236,23 @@ impl Renderer {
                 #[cfg(not(target_os = "linux"))]
                 let is_wayland = false;
 
-                if is_wayland {
-                    info!(
-                        "Wayland detected - using borderless fullscreen (exclusive not supported)"
-                    );
+                // Use borderless if:
+                // - User preference is borderless (default)
+                // - Running on Wayland (doesn't support exclusive)
+                if use_borderless || is_wayland {
+                    if is_wayland {
+                        info!(
+                            "Wayland detected - using borderless fullscreen (exclusive not supported)"
+                        );
+                    } else {
+                        info!("Entering borderless fullscreen (allows Alt+Tab)");
+                    }
                     self.window
                         .set_fullscreen(Some(Fullscreen::Borderless(None)));
                     return;
                 }
 
+                // User wants exclusive fullscreen - try to find best mode
                 let current_monitor = self.window.current_monitor();
 
                 if let Some(monitor) = current_monitor {
@@ -1278,7 +1297,7 @@ impl Renderer {
                     if let Some(mode) = best_mode {
                         let refresh_hz = mode.refresh_rate_millihertz() / 1000;
                         info!(
-                            "SELECTED exclusive fullscreen: {}x{} @ {}Hz",
+                            "SELECTED exclusive fullscreen: {}x{} @ {}Hz (Alt+Tab may not work)",
                             mode.size().width,
                             mode.size().height,
                             refresh_hz
@@ -1287,10 +1306,10 @@ impl Renderer {
                             .set_fullscreen(Some(Fullscreen::Exclusive(mode)));
                         return;
                     } else {
-                        info!("No suitable exclusive fullscreen mode found");
+                        info!("No suitable exclusive fullscreen mode found, falling back to borderless");
                     }
                 } else {
-                    info!("No current monitor detected");
+                    info!("No current monitor detected, using borderless fullscreen");
                 }
 
                 info!("Entering borderless fullscreen");

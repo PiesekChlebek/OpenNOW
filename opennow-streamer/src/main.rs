@@ -293,7 +293,12 @@ impl ApplicationHandler for OpenNowApp {
                     },
                 ..
             } => {
-                renderer.toggle_fullscreen();
+                // Get borderless setting from app settings
+                let use_borderless = {
+                    let app = self.app.lock();
+                    app.settings.borderless
+                };
+                renderer.toggle_fullscreen(use_borderless);
                 // Lock cursor when entering fullscreen during streaming
                 let app = self.app.lock();
                 if app.state == AppState::Streaming {
