@@ -913,17 +913,19 @@ jobs:
           echo "Bundled $LIB_COUNT libraries and $PLUGIN_COUNT plugins"
 
           # Create wrapper script that sets library paths
+          # Note: We prepend bundled plugins to GST_PLUGIN_PATH but still allow system plugins
+          # as fallback. GST_REGISTRY_UPDATE=yes forces GStreamer to rescan plugins on startup.
           echo '#!/bin/bash' > "$BUNDLE_DIR/run.sh"
           echo 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' >> "$BUNDLE_DIR/run.sh"
           echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"' >> "$BUNDLE_DIR/run.sh"
-          echo 'export GST_PLUGIN_PATH="$SCRIPT_DIR/lib/gstreamer-1.0"' >> "$BUNDLE_DIR/run.sh"
-          echo 'export GST_PLUGIN_SYSTEM_PATH=""' >> "$BUNDLE_DIR/run.sh"
+          echo 'export GST_PLUGIN_PATH="$SCRIPT_DIR/lib/gstreamer-1.0${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}"' >> "$BUNDLE_DIR/run.sh"
+          echo 'export GST_REGISTRY_UPDATE=yes' >> "$BUNDLE_DIR/run.sh"
           echo 'exec "$SCRIPT_DIR/opennow-streamer" "$@"' >> "$BUNDLE_DIR/run.sh"
           chmod +x "$BUNDLE_DIR/run.sh"
 
           echo ""
           echo "Bundle created at: $BUNDLE_DIR"
-          echo "Run with: ./run.sh (uses bundled libraries)"
+          echo "Run with: ./run.sh (uses bundled libraries with system fallback)"
           echo "Or install GStreamer system-wide and run ./opennow-streamer directly"
 
       # ==================== Upload Artifacts ====================
@@ -1053,16 +1055,19 @@ jobs:
           echo "Bundled $LIB_COUNT libraries and $PLUGIN_COUNT plugins"
 
           # Create wrapper script that sets library paths
+          # Note: We prepend bundled plugins to GST_PLUGIN_PATH but still allow system plugins
+          # as fallback. GST_REGISTRY_UPDATE=yes forces GStreamer to rescan plugins on startup.
           echo '#!/bin/bash' > "$BUNDLE_DIR/run.sh"
           echo 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' >> "$BUNDLE_DIR/run.sh"
           echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"' >> "$BUNDLE_DIR/run.sh"
-          echo 'export GST_PLUGIN_PATH="$SCRIPT_DIR/lib/gstreamer-1.0"' >> "$BUNDLE_DIR/run.sh"
-          echo 'export GST_PLUGIN_SYSTEM_PATH=""' >> "$BUNDLE_DIR/run.sh"
+          echo 'export GST_PLUGIN_PATH="$SCRIPT_DIR/lib/gstreamer-1.0${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}"' >> "$BUNDLE_DIR/run.sh"
+          echo 'export GST_REGISTRY_UPDATE=yes' >> "$BUNDLE_DIR/run.sh"
           echo 'exec "$SCRIPT_DIR/opennow-streamer" "$@"' >> "$BUNDLE_DIR/run.sh"
           chmod +x "$BUNDLE_DIR/run.sh"
 
           echo ""
           echo "Bundle created at: $BUNDLE_DIR"
+          echo "Run with: ./run.sh (uses bundled libraries with system fallback)"
 
       - name: Zip Linux x64 artifacts
         if: matrix.target == 'linux'

@@ -96,10 +96,76 @@ pub fn init_gstreamer() -> Result<()> {
     }
 }
 
-/// Initialize GStreamer (Linux - straightforward)
+/// Initialize GStreamer (Linux)
+/// Forces registry update to ensure bundled plugins are discovered correctly.
 #[cfg(target_os = "linux")]
 pub fn init_gstreamer() -> Result<()> {
-    gst::init().map_err(|e| anyhow!("Failed to initialize GStreamer: {}", e))
+    use std::env;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+    static mut INIT_RESULT: Option<Result<(), String>> = None;
+
+    // Thread-safe one-time initialization
+    INIT.call_once(|| {
+        // Force GStreamer to rescan plugins on every startup
+        // This is critical for bundled distributions where plugin paths differ from system
+        // Without this, GStreamer may use a stale registry cache that doesn't include
+        // the bundled plugins (h264parse, h265parse, etc.)
+        env::set_var("GST_REGISTRY_UPDATE", "yes");
+
+        // Initialize GStreamer
+        if let Err(e) = gst::init() {
+            unsafe {
+                INIT_RESULT = Some(Err(e.to_string()));
+            }
+            return;
+        }
+
+        // Force a registry update to discover all plugins
+        // This rescans GST_PLUGIN_PATH and system paths
+        if let Err(e) = gst::update_registry() {
+            warn!("Failed to update GStreamer registry: {}", e);
+            // Continue anyway - plugins may still be available
+        }
+
+        // Log available parsers for debugging
+        let registry = gst::Registry::get();
+        let h264parse = registry
+            .find_feature("h264parse", gst::ElementFactory::static_type())
+            .is_some();
+        let h265parse = registry
+            .find_feature("h265parse", gst::ElementFactory::static_type())
+            .is_some();
+        let av1parse = registry
+            .find_feature("av1parse", gst::ElementFactory::static_type())
+            .is_some();
+
+        info!(
+            "GStreamer parsers available: h264parse={}, h265parse={}, av1parse={}",
+            h264parse, h265parse, av1parse
+        );
+
+        // If no parsers found, log helpful hint
+        if !h264parse && !h265parse && !av1parse {
+            warn!("No video parsers found! Install gstreamer1.0-plugins-bad package.");
+            warn!("On Ubuntu/Debian: sudo apt install gstreamer1.0-plugins-bad");
+            warn!("On Fedora: sudo dnf install gstreamer1-plugins-bad-free");
+        }
+
+        unsafe {
+            INIT_RESULT = Some(Ok(()));
+        }
+    });
+
+    // Return cached result
+    unsafe {
+        match &INIT_RESULT {
+            Some(Ok(())) => Ok(()),
+            Some(Err(e)) => Err(anyhow!("Failed to initialize GStreamer: {}", e)),
+            None => Err(anyhow!("GStreamer initialization not completed")),
+        }
+    }
 }
 
 /// GStreamer codec type
@@ -460,6 +526,34 @@ impl GStreamerDecoder {
 
         // Check if the hardware decoder is available
         let registry = gst::Registry::get();
+
+        // Verify parser is available - this is critical for pipeline creation
+        let parser_available = registry
+            .find_feature(parser, gst::ElementFactory::static_type())
+            .is_some();
+
+        if !parser_available {
+            let hint = match parser {
+                "h264parse" | "h265parse" => {
+                    "On Ubuntu/Debian: sudo apt install gstreamer1.0-plugins-bad\n  \
+                     On Fedora: sudo dnf install gstreamer1-plugins-bad-free\n  \
+                     On Arch: sudo pacman -S gst-plugins-bad"
+                }
+                "av1parse" => {
+                    "On Ubuntu/Debian: sudo apt install gstreamer1.0-plugins-bad (version 1.18+)\n  \
+                     On Fedora: sudo dnf install gstreamer1-plugins-bad-free\n  \
+                     On Arch: sudo pacman -S gst-plugins-bad"
+                }
+                _ => "Install the appropriate GStreamer plugins package",
+            };
+            return Err(anyhow!(
+                "GStreamer parser '{}' not found in plugin registry.\n  \
+                 This element is required for video decoding.\n  \
+                 Installation hints:\n  {}",
+                parser,
+                hint
+            ));
+        }
         let hw_decoder_available = registry
             .find_feature(decoder, gst::ElementFactory::static_type())
             .is_some();
