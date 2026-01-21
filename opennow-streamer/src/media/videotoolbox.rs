@@ -13,7 +13,7 @@
 
 use foreign_types::ForeignType;
 use log::{debug, info, warn};
-use objc::runtime::{Object, YES};
+use objc::runtime::Object;
 use objc::{class, msg_send, sel, sel_impl};
 use std::ffi::c_void;
 use std::sync::Arc;
