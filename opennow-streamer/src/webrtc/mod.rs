@@ -979,11 +979,11 @@ pub async fn run_streaming(
                 if decode_stat.frame_produced {
                     frames_decoded += 1;
 
-                    // Track decode latency
+                    // Track decode time (NOT network latency)
                     stats.decode_time_ms = decode_stat.decode_time_ms;
                     pipeline_latency_sum += decode_stat.decode_time_ms as f64;
                     pipeline_latency_count += 1;
-                    stats.latency_ms = (pipeline_latency_sum / pipeline_latency_count as f64) as f32;
+                    // Note: latency_ms is set from RTT in stats_interval.tick() below
 
                     // Log first decoded frame
                     if frames_decoded == 1 {
@@ -1038,6 +1038,8 @@ pub async fn run_streaming(
                 let net_stats = peer.get_network_stats().await;
                 if net_stats.rtt_ms > 0.0 {
                     stats.rtt_ms = net_stats.rtt_ms;
+                    // latency_ms displays RTT (actual network round-trip time)
+                    stats.latency_ms = net_stats.rtt_ms;
                 }
 
                 // Estimate end-to-end latency:

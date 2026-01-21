@@ -24,13 +24,7 @@ pub mod videotoolbox;
 pub mod d3d11;
 
 #[cfg(target_os = "windows")]
-pub mod dxva_decoder;
-
-#[cfg(target_os = "windows")]
 pub mod hevc_parser;
-
-#[cfg(target_os = "windows")]
-pub mod native_video;
 
 #[cfg(target_os = "linux")]
 pub mod vaapi;
@@ -38,9 +32,9 @@ pub mod vaapi;
 #[cfg(target_os = "linux")]
 pub mod v4l2;
 
-// GStreamer decoder available on Linux and Windows x64
+// GStreamer decoder available on Linux, macOS, and Windows x64
 // Note: GStreamer ARM64 Windows binaries are not available
-#[cfg(any(target_os = "linux", all(windows, target_arch = "x86_64")))]
+#[cfg(any(target_os = "linux", target_os = "macos", all(windows, target_arch = "x86_64")))]
 pub mod gstreamer_decoder;
 
 pub use audio::*;
@@ -56,11 +50,7 @@ pub use videotoolbox::{
 #[cfg(target_os = "windows")]
 pub use d3d11::{D3D11TextureWrapper, D3D11ZeroCopyManager, LockedPlanes as D3D11LockedPlanes};
 
-#[cfg(target_os = "windows")]
-pub use dxva_decoder::{DxvaCodec, DxvaDecoder, DxvaDecoderConfig};
 
-#[cfg(target_os = "windows")]
-pub use native_video::{NativeDecodeStats, NativeVideoDecoder};
 
 #[cfg(target_os = "linux")]
 pub use vaapi::{LockedPlanes as VaapiLockedPlanes, VAAPISurfaceWrapper, VaapiZeroCopyManager};
@@ -79,6 +69,12 @@ pub use gstreamer_decoder::{
 
 // GStreamer only available on Windows x64 (no ARM64 binaries)
 #[cfg(all(windows, target_arch = "x86_64"))]
+pub use gstreamer_decoder::{
+    init_gstreamer, is_gstreamer_available, GStreamerDecoder, GstCodec, GstDecoderConfig,
+};
+
+// GStreamer on macOS uses VideoToolbox via vtdec
+#[cfg(target_os = "macos")]
 pub use gstreamer_decoder::{
     init_gstreamer, is_gstreamer_available, GStreamerDecoder, GstCodec, GstDecoderConfig,
 };

@@ -573,7 +573,7 @@ impl ApplicationHandler<UserEvent> for OpenNowApp {
                 let game_sections = app_guard.game_sections.clone();
                 let status_message = app_guard.status_message.clone();
                 let user_name: Option<String> = app_guard.user_info.as_ref()
-                    .and_then(|u| u.email.clone());
+                    .map(|u| u.display_name.clone());
                 let video_frame = app_guard.current_frame.take();
                 let user_name_ref = user_name.as_deref();
                 let servers = app_guard.servers.clone();

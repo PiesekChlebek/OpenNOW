@@ -38,7 +38,7 @@
 
 ## About
 
-OpenNOW is a custom GeForce NOW client rewritten entirely in **Native Rust** for maximum performance and lower resource usage. Built with `wgpu` and `egui` for a seamless cloud gaming experience.
+OpenNOW is a custom GeForce NOW client rewritten entirely in **Native Rust** for maximum performance and lower resource usage. Built with `wgpu` and `iced` for a seamless cloud gaming experience.
 
 <table>
 <tr>
@@ -69,24 +69,39 @@ OpenNOW is a custom GeForce NOW client rewritten entirely in **Native Rust** for
 
 ## Quick Start
 
-### Download
+### One-Line Installer (macOS & Linux)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/zortos293/OpenNOW/main/scripts/install.sh | bash
+```
+
+This will automatically:
+- Detect your OS and architecture
+- Install GStreamer dependencies
+- Download and install the latest release
+- Create desktop shortcuts (Linux)
+
+### Manual Download
 
 | Platform | Download | Notes |
 |----------|----------|-------|
 | **Windows x64** | [OpenNOW-windows-x64.zip](https://github.com/zortos293/OpenNOW/releases/latest) | Portable, GStreamer bundled |
-| **Windows ARM64** | [OpenNOW-windows-arm64.zip](https://github.com/zortos293/OpenNOW/releases/latest) | Surface Pro X, etc. |
-| **macOS (Apple Silicon)** | [OpenNOW-macos-arm64.zip](https://github.com/zortos293/OpenNOW/releases/latest) | M1/M2/M3 native |
+| **macOS** | [OpenNOW-macos-arm64.zip](https://github.com/zortos293/OpenNOW/releases/latest) | Universal (M1/M2/M3 & Intel) |
 | **Linux x64** | [OpenNOW-linux-x64.AppImage](https://github.com/zortos293/OpenNOW/releases/latest) | AppImage, GStreamer bundled |
 | **Linux ARM64** | [OpenNOW-linux-arm64.zip](https://github.com/zortos293/OpenNOW/releases/latest) | Requires system GStreamer |
 
-### Run
+> **macOS:** If blocked by Gatekeeper, run: `xattr -d com.apple.quarantine OpenNOW.app`
 
-1. **Download** the release for your platform
-2. **Extract** and run the executable
-3. **Login** with your NVIDIA GeForce NOW account
-4. **Play!**
+### GStreamer Requirements (Manual Install Only)
 
-> **macOS:** If blocked, run: `xattr -d com.apple.quarantine OpenNOW.app`
+If installing manually (not using the one-liner), you need GStreamer:
+
+| Platform | Installation |
+|----------|--------------|
+| **Windows x64** | Bundled with release (no action needed) |
+| **macOS** | `brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav` |
+| **Linux (apt)** | `sudo apt install gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav gstreamer1.0-vaapi` |
+| **Linux (dnf)** | `sudo dnf install gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugins-ugly-free gstreamer1-libav gstreamer1-vaapi` |
 
 ---
 
@@ -94,12 +109,12 @@ OpenNOW is a custom GeForce NOW client rewritten entirely in **Native Rust** for
 
 | Platform | Status | Hardware Decoding |
 |----------|:------:|-------------------|
-| Windows x64 | ✅ Working | D3D11VA (NVIDIA, AMD, Intel) |
-| Windows ARM64 | ❓ Untested | Should work |
-| macOS ARM64 | ✅ Working | VideoToolbox |
-| macOS Intel | ✅ Working | VideoToolbox (Rosetta 2) |
-| Linux x64 | ⚠️ Buggy | Vulkan Video |
-| Linux ARM64 | ⚠️ Buggy | GStreamer |
+| Windows x64 | ✅ Working | GStreamer D3D11VA (NVIDIA, AMD, Intel) |
+| Windows ARM64 | ❌ Not Supported | No GStreamer ARM64 binaries |
+| macOS ARM64 | ✅ Working | GStreamer VideoToolbox |
+| macOS Intel | ✅ Working | GStreamer VideoToolbox |
+| Linux x64 | ⚠️ Buggy | GStreamer (VAAPI/V4L2) |
+| Linux ARM64 | ⚠️ Buggy | GStreamer (V4L2) |
 | Raspberry Pi | ❌ Broken | Under investigation |
 
 ---
@@ -145,6 +160,19 @@ OpenNOW is a custom GeForce NOW client rewritten entirely in **Native Rust** for
 ---
 
 ## Building from Source
+
+### Prerequisites
+
+**All platforms require GStreamer development libraries:**
+
+| Platform | Install Command |
+|----------|-----------------|
+| **Windows** | Download from [GStreamer.freedesktop.org](https://gstreamer.freedesktop.org/download/) (MSVC 64-bit) |
+| **macOS** | `brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav pkg-config` |
+| **Linux (apt)** | `sudo apt install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev` |
+| **Linux (dnf)** | `sudo dnf install gstreamer1-devel gstreamer1-plugins-base-devel` |
+
+### Build
 
 ```bash
 git clone https://github.com/zortos293/OpenNOW.git

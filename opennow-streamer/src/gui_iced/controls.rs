@@ -7,7 +7,8 @@ use iced_widget::{
     button, column, container, image, row, scrollable, text, text_input, slider, Space,
     checkbox, pick_list,
 };
-use iced_winit::core::{Alignment, Color, Element, Length, Padding, Theme};
+use iced_winit::core::{Alignment, Color, Element, Length, Padding, Theme, Font};
+use super::icons;
 
 /// Safely truncate a string to at most `max_chars` characters.
 /// Returns a slice that respects UTF-8 char boundaries.
@@ -38,7 +39,6 @@ fn get_platform_decoder_options() -> Vec<VideoDecoderBackend> {
         vec![
             VideoDecoderBackend::Auto,
             VideoDecoderBackend::Dxva,         // D3D11 via GStreamer
-            VideoDecoderBackend::NativeDxva,   // Native D3D11 (HEVC only)
             VideoDecoderBackend::Cuvid,        // NVIDIA NVDEC
             VideoDecoderBackend::Qsv,          // Intel QuickSync
             VideoDecoderBackend::Software,
@@ -75,7 +75,6 @@ fn get_platform_decoder_options() -> Vec<VideoDecoderBackend> {
 pub enum Message {
     // Login screen
     LoginWithNvidia,
-    LoginWithGoogle,
     SelectProvider(usize),
     
     // Games screen
@@ -221,7 +220,7 @@ impl Controls {
     pub fn update(&mut self, message: Message) -> Option<UiAction> {
         match message {
             // Login
-            Message::LoginWithNvidia | Message::LoginWithGoogle => {
+            Message::LoginWithNvidia => {
                 Some(UiAction::StartLogin)
             }
             Message::SelectProvider(idx) => {
@@ -487,20 +486,6 @@ impl Controls {
         })
         .on_press(Message::LoginWithNvidia);
         
-        let google_btn = button(
-            container(text("Sign in with Google").size(16))
-                .padding(Padding::from([12, 32]))
-        )
-        .style(|theme: &Theme, status| {
-            button::Style {
-                background: Some(Color::from_rgb(0.2, 0.2, 0.25).into()),
-                text_color: Color::WHITE,
-                border: iced_core::Border::default().rounded(8),
-                ..button::Style::default()
-            }
-        })
-        .on_press(Message::LoginWithGoogle);
-        
         let status: Element<'a, Message, Theme, Renderer> = if !status_message.is_empty() {
             text(status_message)
                 .size(14)
@@ -526,8 +511,6 @@ impl Controls {
             subtitle,
             Space::new().height(48),
             nvidia_btn,
-            Space::new().height(16),
-            google_btn,
             Space::new().height(32),
             status,
             error,
@@ -593,126 +576,195 @@ impl Controls {
     ) -> Element<'a, Message, Theme, Renderer> {
         let logo = text("OpenNOW")
             .size(24)
-            .color(Color::from_rgb(0.463, 0.725, 0.0)); // GFN green
+            .color(Color::from_rgb(0.463, 0.725, 0.0)) // GFN green
+            .font(iced_core::Font::with_name("Inter")); // Try to use a better font if available, or default
         
         // Tab buttons (in header)
         let active_bg = Color::from_rgb(0.463, 0.725, 0.0); // GFN green
-        let inactive_bg = Color::from_rgb(0.196, 0.196, 0.255); // rgb(50, 50, 65)
+        let inactive_bg = Color::TRANSPARENT; // Minimalist look
+        let active_text = Color::WHITE;
+        let inactive_text = Color::from_rgb(0.7, 0.7, 0.7);
         
         let home_selected = matches!(self.current_tab, GamesTab::Home);
         let all_selected = matches!(self.current_tab, GamesTab::AllGames);
         let library_selected = matches!(self.current_tab, GamesTab::MyLibrary);
         let queue_selected = matches!(self.current_tab, GamesTab::QueueTimes);
         
-        let home_btn = button(text("Home").size(12))
-            .padding(Padding::from([6, 12]))
+        let home_btn = button(text("Home").size(14))
+            .padding(Padding::from([8, 16]))
             .on_press(Message::TabSelected(GamesTab::Home))
-            .style(move |_, _| button::Style {
-                background: Some(if home_selected { active_bg } else { inactive_bg }.into()),
-                text_color: Color::WHITE,
-                border: iced_core::Border::default().rounded(6),
-                ..button::Style::default()
-            });
-        
-        let all_btn = button(text("All Games").size(12))
-            .padding(Padding::from([6, 12]))
-            .on_press(Message::TabSelected(GamesTab::AllGames))
-            .style(move |_, _| button::Style {
-                background: Some(if all_selected { active_bg } else { inactive_bg }.into()),
-                text_color: Color::WHITE,
-                border: iced_core::Border::default().rounded(6),
-                ..button::Style::default()
-            });
-        
-        let library_btn = button(text("My Library").size(12))
-            .padding(Padding::from([6, 12]))
-            .on_press(Message::TabSelected(GamesTab::MyLibrary))
-            .style(move |_, _| button::Style {
-                background: Some(if library_selected { active_bg } else { inactive_bg }.into()),
-                text_color: Color::WHITE,
-                border: iced_core::Border::default().rounded(6),
-                ..button::Style::default()
-            });
-        
-        let queue_btn = button(text("Queue").size(12))
-            .padding(Padding::from([6, 12]))
-            .on_press(Message::TabSelected(GamesTab::QueueTimes))
-            .style(move |_, _| button::Style {
-                background: Some(if queue_selected { active_bg } else { inactive_bg }.into()),
-                text_color: Color::WHITE,
-                border: iced_core::Border::default().rounded(6),
-                ..button::Style::default()
-            });
-        
-        let tabs = row![home_btn, all_btn, library_btn, queue_btn].spacing(6);
-        
-        // Search box with icon-style background
-        let search = text_input("🔍 Search...", &self.search_query)
-            .on_input(Message::SearchChanged)
-            .on_submit(Message::SearchSubmit)
-            .padding(8)
-            .width(180)
-            .style(|_theme: &Theme, _status| {
-                text_input::Style {
-                    background: Color::from_rgb(0.137, 0.137, 0.176).into(), // rgb(35, 35, 45)
-                    border: iced_core::Border::default()
-                        .rounded(6)
-                        .color(Color::from_rgb(0.235, 0.235, 0.294)) // rgb(60, 60, 75)
-                        .width(1.0),
-                    icon: Color::from_rgb(0.47, 0.47, 0.55),
-                    placeholder: Color::from_rgb(0.47, 0.47, 0.55),
-                    value: Color::WHITE,
-                    selection: Color::from_rgb(0.463, 0.725, 0.0),
+            .style(move |_, status| {
+                let hovered = status == iced_widget::button::Status::Hovered;
+                button::Style {
+                    background: Some(if home_selected { active_bg } else if hovered { Color::from_rgba(1.0, 1.0, 1.0, 0.1) } else { inactive_bg }.into()),
+                    text_color: if home_selected || hovered { active_text } else { inactive_text },
+                    border: iced_core::Border::default().rounded(20),
+                    ..button::Style::default()
                 }
             });
         
+        let all_btn = button(text("All Games").size(14))
+            .padding(Padding::from([8, 16]))
+            .on_press(Message::TabSelected(GamesTab::AllGames))
+            .style(move |_, status| {
+                let hovered = status == iced_widget::button::Status::Hovered;
+                button::Style {
+                    background: Some(if all_selected { active_bg } else if hovered { Color::from_rgba(1.0, 1.0, 1.0, 0.1) } else { inactive_bg }.into()),
+                    text_color: if all_selected || hovered { active_text } else { inactive_text },
+                    border: iced_core::Border::default().rounded(20),
+                    ..button::Style::default()
+                }
+            });
+        
+        let library_btn = button(text("My Library").size(14))
+            .padding(Padding::from([8, 16]))
+            .on_press(Message::TabSelected(GamesTab::MyLibrary))
+            .style(move |_, status| {
+                let hovered = status == iced_widget::button::Status::Hovered;
+                button::Style {
+                    background: Some(if library_selected { active_bg } else if hovered { Color::from_rgba(1.0, 1.0, 1.0, 0.1) } else { inactive_bg }.into()),
+                    text_color: if library_selected || hovered { active_text } else { inactive_text },
+                    border: iced_core::Border::default().rounded(20),
+                    ..button::Style::default()
+                }
+            });
+        
+        let queue_btn = button(text("Queue").size(14))
+            .padding(Padding::from([8, 16]))
+            .on_press(Message::TabSelected(GamesTab::QueueTimes))
+            .style(move |_, status| {
+                let hovered = status == iced_widget::button::Status::Hovered;
+                button::Style {
+                    background: Some(if queue_selected { active_bg } else if hovered { Color::from_rgba(1.0, 1.0, 1.0, 0.1) } else { inactive_bg }.into()),
+                    text_color: if queue_selected || hovered { active_text } else { inactive_text },
+                    border: iced_core::Border::default().rounded(20),
+                    ..button::Style::default()
+                }
+            });
+        
+        let tabs = row![home_btn, all_btn, library_btn, queue_btn].spacing(4).align_y(Alignment::Center);
+        
+        // Search box with text icon - centered in search bar
+        let search_icon = container(
+            text(icons::SEARCH).size(14).color(Color::from_rgb(0.5, 0.5, 0.5))
+        )
+        .width(20)
+        .height(20)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill);
+
+        let search_input = text_input("Search games...", &self.search_query)
+            .on_input(Message::SearchChanged)
+            .on_submit(Message::SearchSubmit)
+            .padding(0) // Remove padding from input itself, handled by container
+            .width(Length::Fill)
+            .style(|_theme: &Theme, _status| {
+                text_input::Style {
+                    background: Color::TRANSPARENT.into(),
+                    border: iced_core::Border::default(),
+                    placeholder: Color::from_rgb(0.5, 0.5, 0.5),
+                    value: Color::WHITE,
+                    selection: Color::from_rgb(0.463, 0.725, 0.0),
+                    icon: Color::TRANSPARENT,
+                }
+            });
+
+        let search_bar = container(
+            row![
+                Space::new().width(12),
+                search_icon,
+                Space::new().width(8),
+                search_input,
+                Space::new().width(12),
+            ].align_y(Alignment::Center)
+        )
+        .width(300)
+        .height(36)
+        .style(|_| container::Style {
+            background: Some(Color::from_rgb(0.137, 0.137, 0.176).into()),
+            border: iced_core::Border::default().rounded(18).color(Color::from_rgb(0.235, 0.235, 0.294)).width(1.0),
+            ..container::Style::default()
+        });
+        
+        // User display name
         let user_text = text(user_name.unwrap_or("User"))
             .size(13)
             .color(Color::WHITE);
         
-        let settings_btn = button(text("⚙").size(14))
-            .padding(Padding::from([6, 8]))
+        // Settings icon button - wrap icon in centered container
+        let settings_icon = container(
+            text(icons::SETTINGS).size(16).color(Color::from_rgb(0.8, 0.8, 0.8))
+        )
+        .width(24)
+        .height(24)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill);
+        
+        let settings_btn = button(settings_icon)
+            .width(36)
+            .height(36)
+            .padding(0)
             .on_press(Message::OpenSettings)
-            .style(|_, _| button::Style {
-                background: Some(Color::from_rgb(0.196, 0.196, 0.255).into()),
-                text_color: Color::WHITE,
-                border: iced_core::Border::default().rounded(6),
+            .style(|_, status| button::Style {
+                background: Some(if status == iced_widget::button::Status::Hovered {
+                    Color::from_rgba(1.0, 1.0, 1.0, 0.1).into()
+                } else {
+                    Color::TRANSPARENT.into()
+                }),
+                text_color: if status == iced_widget::button::Status::Hovered {
+                    Color::WHITE
+                } else {
+                    Color::from_rgb(0.8, 0.8, 0.8)
+                },
+                border: iced_core::Border::default().rounded(18),
                 ..button::Style::default()
             });
-        
-        let logout_btn = button(text("Logout").size(12))
-            .padding(Padding::from([6, 12]))
+            
+        let logout_btn = button(
+            text("Logout").size(13)
+        )
+            .padding(Padding::from([8, 16]))
             .on_press(Message::Logout)
-            .style(|_, _| button::Style {
-                background: Some(Color::from_rgb(0.196, 0.196, 0.255).into()),
+            .style(|_, status| button::Style {
+                background: Some(if status == iced_widget::button::Status::Hovered {
+                    Color::from_rgba(1.0, 0.3, 0.3, 0.15).into()
+                } else {
+                    Color::from_rgb(0.196, 0.196, 0.255).into()
+                }),
                 text_color: Color::WHITE,
                 border: iced_core::Border::default().rounded(6),
                 ..button::Style::default()
             });
         
-        // Combined header row: Logo | Tabs | Search | User | Settings | Logout
+        // Layout: Logo | Tabs | [flex space] | Search | [flex space] | User | Settings | Logout
+        // This centers the search bar between the left (logo+tabs) and right (user+buttons) sections
         let header_row = row![
-            Space::new().width(12),
+            Space::new().width(24),
             logo,
-            Space::new().width(16),
+            Space::new().width(32),
             tabs,
-            Space::new().width(Length::Fill),
-            search,
-            Space::new().width(12),
+            Space::new().width(Length::Fill), // Left flex space
+            search_bar,
+            Space::new().width(Length::Fill), // Right flex space
             user_text,
-            Space::new().width(10),
+            Space::new().width(12),
             settings_btn,
             Space::new().width(8),
             logout_btn,
-            Space::new().width(12),
+            Space::new().width(24),
         ]
-        .align_y(Alignment::Center);
+        .align_y(Alignment::Center)
+        .height(60); // Taller header
         
         container(header_row)
             .width(Length::Fill)
-            .padding(Padding::from([10, 0]))
             .style(|_| container::Style {
                 background: Some(Color::from_rgb(0.086, 0.086, 0.118).into()), // rgb(22, 22, 30)
+                border: iced_core::Border {
+                    color: Color::from_rgb(0.05, 0.05, 0.08),
+                    width: 1.0,
+                    radius: 0.0.into(),
+                },
                 ..container::Style::default()
             })
             .into()
@@ -756,9 +808,9 @@ impl Controls {
             // Hours display
             let hours_display: Element<'a, Message, Theme, Renderer> = if sub.is_unlimited {
                 row![
-                    text("⏱").size(14).color(Color::from_rgb(0.5, 0.5, 0.5)),
-                    Space::new().width(5),
-                    text("∞").size(15).color(Color::from_rgb(0.463, 0.725, 0.0)),
+                    text(icons::CLOCK).size(14).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                    Space::new().width(6),
+                    text(icons::INFINITY).size(15).color(Color::from_rgb(0.463, 0.725, 0.0)),
                 ].align_y(Alignment::Center).into()
             } else {
                 let hours_color = if sub.remaining_hours > 5.0 {
@@ -770,8 +822,8 @@ impl Controls {
                 };
                 
                 row![
-                    text("⏱").size(14).color(Color::from_rgb(0.5, 0.5, 0.5)),
-                    Space::new().width(5),
+                    text(icons::CLOCK).size(14).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                    Space::new().width(6),
                     text(format!("{:.1}h", sub.remaining_hours)).size(13).color(hours_color),
                     text(format!(" / {:.0}h", sub.total_hours)).size(12).color(Color::from_rgb(0.5, 0.5, 0.5)),
                 ].align_y(Alignment::Center).into()
@@ -781,8 +833,8 @@ impl Controls {
             let storage_display: Element<'a, Message, Theme, Renderer> = if sub.has_persistent_storage {
                 if let Some(storage_gb) = sub.storage_size_gb {
                     row![
-                        text("💾").size(14).color(Color::from_rgb(0.5, 0.5, 0.5)),
-                        Space::new().width(5),
+                        text(icons::STORAGE).size(14).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                        Space::new().width(6),
                         text(format!("{} GB", storage_gb)).size(13).color(Color::from_rgb(0.392, 0.706, 1.0)),
                     ].align_y(Alignment::Center).into()
                 } else {
@@ -814,31 +866,42 @@ impl Controls {
                 .map(|p| format!(" ({}ms)", p))
                 .unwrap_or_default();
             
-            text(format!("🌐 {}{}", server.name, ping_text))
-                .size(12)
-                .color(Color::from_rgb(0.392, 0.706, 1.0)) // rgb(100, 180, 255)
-                .into()
+            row![
+                text(icons::SERVER).size(14).color(Color::from_rgb(0.392, 0.706, 1.0)),
+                Space::new().width(6),
+                text(format!("{}{}", server.name, ping_text))
+                    .size(12)
+                    .color(Color::from_rgb(0.392, 0.706, 1.0))
+            ].align_y(Alignment::Center).into()
         } else {
-            text("🌐 Auto (waiting for ping)")
-                .size(12)
-                .color(Color::from_rgb(0.5, 0.5, 0.5))
-                .into()
+            row![
+                text(icons::SERVER).size(14).color(Color::from_rgb(0.5, 0.5, 0.5)),
+                Space::new().width(6),
+                text("Auto (waiting for ping)")
+                    .size(12)
+                    .color(Color::from_rgb(0.5, 0.5, 0.5))
+            ].align_y(Alignment::Center).into()
         };
         
         let bar_row = row![
-            Space::new().width(15),
+            Space::new().width(24),
             left_content,
             Space::new().width(Length::Fill),
             server_display,
-            Space::new().width(15),
+            Space::new().width(24),
         ]
-        .align_y(Alignment::Center);
+        .align_y(Alignment::Center)
+        .height(32); // Fixed height for bottom bar
         
         container(bar_row)
             .width(Length::Fill)
-            .padding(Padding::from([8, 0]))
             .style(|_| container::Style {
                 background: Some(Color::from_rgb(0.086, 0.086, 0.118).into()), // rgb(22, 22, 30)
+                border: iced_core::Border {
+                    color: Color::from_rgb(0.05, 0.05, 0.08),
+                    width: 1.0,
+                    radius: 0.0.into(),
+                },
                 ..container::Style::default()
             })
             .into()
@@ -943,9 +1006,9 @@ impl Controls {
                 row_items.push(self.view_game_card(game));
             }
             
-            // Fill remaining slots
+            // Fill remaining slots with fixed-width spaces to maintain grid alignment
             while row_items.len() < 6 {
-                row_items.push(Space::new().width(180).into());
+                row_items.push(Space::new().width(180).height(290).into());
             }
             
             rows.push(
@@ -968,17 +1031,21 @@ impl Controls {
         let card_bg = Color::from_rgb(0.157, 0.157, 0.196); // rgb(40, 40, 50) - lighter than bg
         let card_border = Color::from_rgb(0.235, 0.235, 0.275); // rgb(60, 60, 70)
         
+        // Fixed card width for consistent layout in both grid and horizontal scroll
+        let card_width = 180;
+        let card_height = 240;
+        
         // Image or placeholder
         let img: Element<'a, Message, Theme, Renderer> = if let Some(ref url) = game.image_url {
             if let Some(handle) = self.loaded_images.get(url) {
                 container(
                     image(handle.clone())
-                        .width(180)
-                        .height(240)
+                        .width(card_width)
+                        .height(card_height)
                         .content_fit(iced_core::ContentFit::Cover)
                 )
-                .width(180)
-                .height(240)
+                .width(card_width)
+                .height(card_height)
                 .clip(true)
                 .style(move |_| container::Style {
                     background: Some(card_bg.into()),
@@ -1001,8 +1068,8 @@ impl Controls {
                     .width(Length::Fill)
                     .align_x(Alignment::Center)
                 )
-                .width(180)
-                .height(240)
+                .width(card_width)
+                .height(card_height)
                 .padding(8)
                 .style(move |_| container::Style {
                     background: Some(card_bg.into()),
@@ -1026,8 +1093,8 @@ impl Controls {
                 .width(Length::Fill)
                 .align_x(Alignment::Center)
             )
-            .width(180)
-            .height(240)
+            .width(card_width)
+            .height(card_height)
             .padding(8)
             .style(move |_| container::Style {
                 background: Some(card_bg.into()),
@@ -1040,7 +1107,8 @@ impl Controls {
         let title = text(&game.title)
             .size(12)
             .color(Color::WHITE)
-            .width(180);
+            .width(card_width)
+            .height(32); // Fixed height for title to ensure alignment
         
         let store = text(&game.store)
             .size(10)
@@ -1052,16 +1120,37 @@ impl Controls {
             title,
             store,
         ]
-        .width(180);
+        .width(card_width);
         
         button(card)
             .padding(0)
             .on_press(Message::GameClicked(game_clone))
-            .style(|_, _| button::Style {
-                background: None,
-                text_color: Color::WHITE,
-                border: iced_core::Border::default(),
-                ..button::Style::default()
+            .width(card_width)
+            .style(move |_, status| {
+                let hovered = status == iced_widget::button::Status::Hovered;
+                button::Style {
+                    background: Some(if hovered {
+                        Color::from_rgb(0.2, 0.2, 0.25).into()
+                    } else {
+                        Color::TRANSPARENT.into()
+                    }),
+                    text_color: Color::WHITE,
+                    border: iced_core::Border {
+                        color: if hovered { Color::from_rgb(0.467, 0.784, 0.196) } else { Color::TRANSPARENT },
+                        width: if hovered { 1.5 } else { 0.0 },
+                        radius: 8.0.into(),
+                    },
+                    shadow: if hovered {
+                        iced_core::Shadow {
+                            color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                            offset: iced_core::Vector::new(0.0, 4.0),
+                            blur_radius: 12.0,
+                        }
+                    } else {
+                        iced_core::Shadow::default()
+                    },
+                    snap: false,
+                }
             })
             .into()
     }
@@ -1077,7 +1166,7 @@ impl Controls {
     }
     
     fn view_session<'a>(&'a self, status_message: &'a str) -> Element<'a, Message, Theme, Renderer> {
-        let spinner = text("⟳")
+        let spinner = text(icons::SPINNER)
             .size(64)
             .color(Color::from_rgb(0.467, 0.784, 0.196));
         
@@ -1090,8 +1179,12 @@ impl Controls {
                 .padding(Padding::from([12, 32]))
         )
         .on_press(Message::CancelSession)
-        .style(|_, _| button::Style {
-            background: Some(Color::from_rgb(0.3, 0.15, 0.15).into()),
+        .style(|_, status| button::Style {
+            background: Some(if status == iced_widget::button::Status::Hovered {
+                Color::from_rgb(0.4, 0.2, 0.2).into()
+            } else {
+                Color::from_rgb(0.3, 0.15, 0.15).into()
+            }),
             text_color: Color::WHITE,
             border: iced_core::Border::default().rounded(8),
             ..button::Style::default()
@@ -1152,21 +1245,58 @@ impl Controls {
         selected_server_index: usize,
         _subscription: Option<&'a SubscriptionInfo>,
     ) -> Element<'a, Message, Theme, Renderer> {
-        let section_title_color = Color::from_rgb(0.467, 0.784, 0.196);
-        let label_width = 130;
+        let section_title_color = Color::from_rgb(0.467, 0.784, 0.196); // GFN Green
+        let label_width = 140;
         
+        // Helper to create a section card
+        let section_card = |title: &str, content: Element<'a, Message, Theme, Renderer>| {
+            container(
+                column![
+                    row![
+                        // Accent line
+                        container(Space::new().width(4).height(20))
+                            .style(|_| container::Style {
+                                background: Some(Color::from_rgb(0.467, 0.784, 0.196).into()),
+                                border: iced_core::Border::default().rounded(2),
+                                ..container::Style::default()
+                            }),
+                        Space::new().width(12),
+                        text(title.to_string()).size(18).color(Color::WHITE),
+                    ].align_y(Alignment::Center),
+                    Space::new().height(16),
+                    content,
+                ]
+                .padding(16)
+            )
+            .width(Length::Fill)
+            .style(|_| container::Style {
+                background: Some(Color::from_rgb(0.12, 0.12, 0.16).into()),
+                border: iced_core::Border::default().rounded(12),
+                ..container::Style::default()
+            })
+        };
+
         let title = row![
-            text("Settings").size(24).color(Color::WHITE),
+            text("Settings").size(28).color(Color::WHITE),
             Space::new().width(Length::Fill),
-            button(text("✕").size(18))
+            button(text(icons::CLOSE).size(20))
                 .on_press(Message::CloseSettings)
-                .padding(8)
-                .style(|_, _| button::Style {
-                    background: None,
-                    text_color: Color::WHITE,
+                .padding(10)
+                .style(|_, status| button::Style {
+                    background: Some(if status == iced_widget::button::Status::Hovered {
+                        Color::from_rgba(1.0, 1.0, 1.0, 0.1).into()
+                    } else {
+                        Color::TRANSPARENT.into()
+                    }),
+                    text_color: if status == iced_widget::button::Status::Hovered {
+                        Color::WHITE
+                    } else {
+                        Color::from_rgb(0.7, 0.7, 0.7)
+                    },
+                    border: iced_core::Border::default().rounded(20),
                     ..button::Style::default()
                 }),
-        ];
+        ].align_y(Alignment::Center);
         
         // === VIDEO SETTINGS ===
         let codec_options: Vec<String> = VideoCodec::all().iter().map(|c| c.as_str().to_string()).collect();
@@ -1182,142 +1312,137 @@ impl Controls {
         let color_options: Vec<String> = ColorQuality::all().iter().map(|c| c.display_name().to_string()).collect();
         let current_color = self.settings.color_quality.display_name().to_string();
         
-        let video_section = column![
-            text("Video").size(16).color(section_title_color),
-            Space::new().height(10),
-            
+        let video_content = column![
             // Bitrate
             row![
-                text("Max Bitrate").size(13).color(Color::WHITE).width(label_width),
-                slider(10.0..=200.0, self.bitrate_value, Message::BitrateChanged)
-                    .step(5.0)
-                    .width(180),
-                Space::new().width(8),
-                text(format!("{} Mbps", self.settings.max_bitrate_mbps)).size(12).color(Color::WHITE),
+                text("Max Bitrate").size(14).color(Color::from_rgb(0.8, 0.8, 0.8)).width(label_width),
+                column![
+                    row![
+                        slider(10.0..=200.0, self.bitrate_value, Message::BitrateChanged)
+                            .step(5.0)
+                            .width(Length::Fill),
+                        Space::new().width(12),
+                        text(format!("{} Mbps", self.settings.max_bitrate_mbps)).size(14).color(Color::WHITE),
+                    ].align_y(Alignment::Center),
+                ].width(Length::Fill),
             ].align_y(Alignment::Center),
-            Space::new().height(8),
+            Space::new().height(16),
             
             // Resolution  
             row![
-                text("Resolution").size(13).color(Color::WHITE).width(label_width),
+                text("Resolution").size(14).color(Color::from_rgb(0.8, 0.8, 0.8)).width(label_width),
                 pick_list(
                     RESOLUTIONS.iter().map(|(r, _)| r.to_string()).collect::<Vec<_>>(),
                     Some(self.settings.resolution.clone()),
                     Message::ResolutionChanged,
-                ).width(180).text_size(12),
+                ).width(Length::Fill).text_size(14),
             ].align_y(Alignment::Center),
-            Space::new().height(8),
+            Space::new().height(12),
             
             // FPS
             row![
-                text("Frame Rate").size(13).color(Color::WHITE).width(label_width),
+                text("Frame Rate").size(14).color(Color::from_rgb(0.8, 0.8, 0.8)).width(label_width),
                 pick_list(FPS_OPTIONS.to_vec(), Some(self.settings.fps), Message::FpsChanged)
-                    .width(180).text_size(12),
+                    .width(Length::Fill).text_size(14),
             ].align_y(Alignment::Center),
-            Space::new().height(8),
+            Space::new().height(12),
             
             // Codec
             row![
-                text("Codec").size(13).color(Color::WHITE).width(label_width),
+                text("Codec").size(14).color(Color::from_rgb(0.8, 0.8, 0.8)).width(label_width),
                 pick_list(codec_options, Some(current_codec), Message::CodecChanged)
-                    .width(180).text_size(12),
+                    .width(Length::Fill).text_size(14),
             ].align_y(Alignment::Center),
-            Space::new().height(8),
+            Space::new().height(12),
             
             // Decoder
             row![
-                text("Decoder").size(13).color(Color::WHITE).width(label_width),
+                text("Decoder").size(14).color(Color::from_rgb(0.8, 0.8, 0.8)).width(label_width),
                 pick_list(decoder_options, Some(current_decoder), Message::DecoderChanged)
-                    .width(180).text_size(12),
+                    .width(Length::Fill).text_size(14),
             ].align_y(Alignment::Center),
-            Space::new().height(8),
+            Space::new().height(12),
             
             // Color Quality
             row![
-                text("Color Quality").size(13).color(Color::WHITE).width(label_width),
+                text("Color Quality").size(14).color(Color::from_rgb(0.8, 0.8, 0.8)).width(label_width),
                 pick_list(color_options, Some(current_color), Message::ColorQualityChanged)
-                    .width(180).text_size(12),
+                    .width(Length::Fill).text_size(14),
             ].align_y(Alignment::Center),
-            Space::new().height(8),
+            Space::new().height(16),
             
             // HDR
             checkbox(self.settings.hdr_enabled)
-                .label("HDR (requires 10-bit)")
+                .label("Enable HDR (High Dynamic Range)")
                 .on_toggle(Message::HdrChanged)
-                .text_size(13)
+                .text_size(14)
                 .style(|theme, status| {
                     let mut style = checkbox::primary(theme, status);
                     style.text_color = Some(Color::WHITE);
                     style
                 }),
         ];
+        
+        let video_section = section_card("Video Stream", video_content.into());
         
         // === DISPLAY SETTINGS ===
-        let display_section = column![
-            Space::new().height(14),
-            text("Display").size(16).color(section_title_color),
-            Space::new().height(10),
-            
+        let display_content = column![
             checkbox(self.settings.fullscreen)
-                .label("Fullscreen")
+                .label("Fullscreen Mode")
                 .on_toggle(Message::FullscreenChanged)
-                .text_size(13)
+                .text_size(14)
                 .style(|theme, status| {
                     let mut style = checkbox::primary(theme, status);
                     style.text_color = Some(Color::WHITE);
                     style
                 }),
-            Space::new().height(6),
+            Space::new().height(12),
             
             checkbox(self.settings.borderless)
-                .label("Borderless Fullscreen")
+                .label("Borderless Window")
                 .on_toggle(Message::BorderlessChanged)
-                .text_size(13)
+                .text_size(14)
                 .style(|theme, status| {
                     let mut style = checkbox::primary(theme, status);
                     style.text_color = Some(Color::WHITE);
                     style
                 }),
-            Space::new().height(6),
+            Space::new().height(12),
             
             checkbox(self.settings.vsync)
-                .label("VSync")
+                .label("VSync (Vertical Sync)")
                 .on_toggle(Message::VsyncChanged)
-                .text_size(13)
+                .text_size(14)
                 .style(|theme, status| {
                     let mut style = checkbox::primary(theme, status);
                     style.text_color = Some(Color::WHITE);
                     style
                 }),
         ];
+        
+        let display_section = section_card("Display", display_content.into());
         
         // === PERFORMANCE SETTINGS ===
-        let performance_section = column![
-            Space::new().height(14),
-            text("Performance").size(16).color(section_title_color),
-            Space::new().height(10),
-            
+        let performance_content = column![
             checkbox(self.settings.low_latency_mode)
-                .label("Low Latency Mode")
+                .label("Low Latency Mode (Reduces buffering)")
                 .on_toggle(Message::LowLatencyChanged)
-                .text_size(13)
+                .text_size(14)
                 .style(|theme, status| {
                     let mut style = checkbox::primary(theme, status);
                     style.text_color = Some(Color::WHITE);
                     style
                 }),
         ];
+        
+        let performance_section = section_card("Performance", performance_content.into());
         
         // === AUDIO SETTINGS ===
-        let audio_section = column![
-            Space::new().height(14),
-            text("Audio").size(16).color(section_title_color),
-            Space::new().height(10),
-            
+        let audio_content = column![
             checkbox(self.settings.surround)
-                .label("Surround Sound (5.1)")
+                .label("5.1 Surround Sound")
                 .on_toggle(Message::SurroundChanged)
-                .text_size(13)
+                .text_size(14)
                 .style(|theme, status| {
                     let mut style = checkbox::primary(theme, status);
                     style.text_color = Some(Color::WHITE);
@@ -1325,38 +1450,34 @@ impl Controls {
                 }),
         ];
         
+        let audio_section = section_card("Audio", audio_content.into());
+        
         // === INPUT SETTINGS ===
-        let input_section = column![
-            Space::new().height(14),
-            text("Input").size(16).color(section_title_color),
-            Space::new().height(10),
-            
+        let input_content = column![
             checkbox(self.settings.clipboard_paste_enabled)
                 .label("Enable Clipboard Paste (Ctrl+V)")
                 .on_toggle(Message::ClipboardPasteChanged)
-                .text_size(13)
+                .text_size(14)
                 .style(|theme, status| {
                     let mut style = checkbox::primary(theme, status);
                     style.text_color = Some(Color::WHITE);
                     style
                 }),
         ];
+        
+        let input_section = section_card("Input", input_content.into());
         
         // === GAME SETTINGS ===
         let language_options: Vec<String> = GameLanguage::all().iter().map(|l| l.display_name().to_string()).collect();
         let current_language = self.settings.game_language.display_name().to_string();
         
-        let game_section = column![
-            Space::new().height(14),
-            text("Game").size(16).color(section_title_color),
-            Space::new().height(10),
-            
-            row![
-                text("Language").size(13).color(Color::WHITE).width(label_width),
-                pick_list(language_options, Some(current_language), Message::GameLanguageChanged)
-                    .width(180).text_size(12),
-            ].align_y(Alignment::Center),
-        ];
+        let game_content = row![
+            text("Language").size(14).color(Color::from_rgb(0.8, 0.8, 0.8)).width(label_width),
+            pick_list(language_options, Some(current_language), Message::GameLanguageChanged)
+                .width(Length::Fill).text_size(14),
+        ].align_y(Alignment::Center);
+        
+        let game_section = section_card("Game", game_content.into());
         
         // === SERVER SETTINGS ===
         let server_names: Vec<String> = servers.iter()
@@ -1364,46 +1485,59 @@ impl Controls {
             .collect();
         let selected_server = server_names.get(selected_server_index).cloned();
         
-        let server_section = column![
-            Space::new().height(14),
-            text("Server").size(16).color(section_title_color),
-            Space::new().height(10),
-            
+        let server_content = column![
             row![
-                text("Region").size(13).color(Color::WHITE).width(label_width),
+                text("Region").size(14).color(Color::from_rgb(0.8, 0.8, 0.8)).width(label_width),
                 pick_list(server_names, selected_server, |_s| Message::ServerSelected(0))
-                    .width(220).text_size(12),
+                    .width(Length::Fill).text_size(14),
             ].align_y(Alignment::Center),
-            Space::new().height(8),
+            Space::new().height(16),
             
-            button(text("Test Ping").size(12))
+            button(text("Test Server Ping").size(13))
                 .on_press(Message::StartPingTest)
-                .padding(Padding::from([6, 14]))
-                .style(|_, _| button::Style {
-                    background: Some(Color::from_rgb(0.2, 0.2, 0.25).into()),
-                    text_color: Color::WHITE,
-                    border: iced_core::Border::default().rounded(6),
-                    ..button::Style::default()
+                .padding(Padding::from([8, 16]))
+                .style(|_, status| {
+                     let hovered = status == iced_widget::button::Status::Hovered;
+                     button::Style {
+                        background: Some(if hovered {
+                             Color::from_rgb(0.25, 0.25, 0.3).into()
+                        } else {
+                             Color::from_rgb(0.2, 0.2, 0.25).into()
+                        }),
+                        text_color: Color::WHITE,
+                        border: iced_core::Border::default().rounded(6),
+                        ..button::Style::default()
+                    }
                 }),
         ];
         
+        let server_section = section_card("Server", server_content.into());
+        
         // Reset button
         let reset_section = column![
-            Space::new().height(20),
-            button(text("Reset to Defaults").size(13))
+            Space::new().height(12),
+            button(text("Reset All Settings to Defaults").size(14))
                 .on_press(Message::ResetSettings)
-                .padding(Padding::from([8, 18]))
-                .style(|_, _| button::Style {
-                    background: Some(Color::from_rgb(0.3, 0.15, 0.15).into()),
-                    text_color: Color::WHITE,
-                    border: iced_core::Border::default().rounded(6),
-                    ..button::Style::default()
+                .padding(Padding::from([12, 24]))
+                .width(Length::Fill)
+                .style(|_, status| {
+                     let hovered = status == iced_widget::button::Status::Hovered;
+                     button::Style {
+                        background: Some(if hovered {
+                             Color::from_rgb(0.4, 0.2, 0.2).into()
+                        } else {
+                             Color::from_rgb(0.3, 0.15, 0.15).into()
+                        }),
+                        text_color: Color::WHITE,
+                        border: iced_core::Border::default().rounded(8),
+                        ..button::Style::default()
+                    }
                 }),
         ];
         
         let content = column![
             title,
-            Space::new().height(12),
+            Space::new().height(20),
             scrollable(
                 column![
                     video_section,
@@ -1416,18 +1550,24 @@ impl Controls {
                     reset_section,
                     Space::new().height(20),
                 ]
-                .padding(Padding::from([0, 12]))
+                .spacing(16)
+                .padding(Padding::from([0.0, 12.0])) // Padding for scrollbar
             )
-            .height(520),
+            .height(Length::Fill),
         ]
-        .padding(20);
+        .padding(32);
         
         container(content)
-            .width(420)
-            .max_height(620)
+            .width(600)
+            .height(750)
             .style(|_| container::Style {
-                background: Some(Color::from_rgb(0.1, 0.1, 0.14).into()),
-                border: iced_core::Border::default().rounded(12),
+                background: Some(Color::from_rgb(0.09, 0.09, 0.12).into()),
+                border: iced_core::Border::default().rounded(16),
+                shadow: iced_core::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                    offset: iced_core::Vector::new(0.0, 10.0),
+                    blur_radius: 30.0,
+                },
                 ..container::Style::default()
             })
             .into()
@@ -1442,15 +1582,33 @@ impl Controls {
         
         iced_widget::Stack::with_children(vec![
             background,
+            
+            // Overlay - Click to close
+            button(container(Space::new().width(Length::Fill).height(Length::Fill)))
+                .on_press(Message::GamePopupClose)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .style(|_, _| button::Style {
+                    background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.8).into()),
+                    ..button::Style::default()
+                })
+                .into(),
+            
+            // Popup Container - Centered
+            // Note: We don't want clicks on the popup to close it.
+            // By wrapping the popup in a container that sits on top, we ensure visuals are correct.
+            // To prevent click-through, the popup content itself (view_game_popup) 
+            // should be contained in a widget that consumes mouse events (like a button with no action? or just opaque container)
+            // In Iced, a container with background doesn't necessarily block mouse events if it doesn't handle them.
+            // A simple trick is to wrap the popup content in a generic element that stops propagation, 
+            // but Iced doesn't have a simple "stop propagation" widget.
+            // Instead, we can make the overlay button separate from the popup container.
+            
             container(popup)
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .center_x(Length::Fill)
                 .center_y(Length::Fill)
-                .style(|_| container::Style {
-                    background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.7).into()),
-                    ..container::Style::default()
-                })
                 .into(),
         ])
         .into()
@@ -1459,40 +1617,117 @@ impl Controls {
     fn view_game_popup<'a>(&'a self, game: &'a GameInfo) -> Element<'a, Message, Theme, Renderer> {
         let game_clone = game.clone();
         
-        let title_row = row![
-            text(&game.title).size(24).color(Color::WHITE),
+        // --- Left Column: Game Art ---
+        let img_width = 260;
+        let img_height = 350;
+        
+        let img_section: Element<'a, Message, Theme, Renderer> = if let Some(ref url) = game.image_url {
+            if let Some(handle) = self.loaded_images.get(url) {
+                container(
+                    image(handle.clone())
+                        .width(img_width)
+                        .height(img_height)
+                        .content_fit(iced_core::ContentFit::Cover)
+                )
+                .width(img_width)
+                .height(img_height)
+                .clip(true)
+                .style(|_| container::Style {
+                    background: Some(Color::BLACK.into()),
+                    border: iced_core::Border::default().rounded(8),
+                    ..container::Style::default()
+                })
+                .into()
+            } else {
+                container(
+                    text(&game.title).size(20).color(Color::from_rgb(0.5, 0.5, 0.5))
+                )
+                .width(img_width)
+                .height(img_height)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .style(|_| container::Style {
+                    background: Some(Color::from_rgb(0.15, 0.15, 0.2).into()),
+                    border: iced_core::Border::default().rounded(8),
+                    ..container::Style::default()
+                })
+                .into()
+            }
+        } else {
+            container(Space::new())
+                .width(img_width)
+                .height(img_height)
+                .style(|_| container::Style {
+                    background: Some(Color::from_rgb(0.15, 0.15, 0.2).into()),
+                    border: iced_core::Border::default().rounded(8),
+                    ..container::Style::default()
+                })
+                .into()
+        };
+
+        // --- Right Column: Details ---
+        
+        // Header: Title + Close Button
+        let header = row![
+            column![
+                text(&game.title).size(32).color(Color::WHITE),
+                Space::new().height(4),
+                row![
+                    container(text(&game.store).size(12).color(Color::WHITE))
+                        .padding(Padding::from([4, 8]))
+                        .style(|_| container::Style {
+                            background: Some(Color::from_rgb(0.25, 0.25, 0.3).into()),
+                            border: iced_core::Border::default().rounded(4),
+                            ..container::Style::default()
+                        }),
+                    Space::new().width(8),
+                    if let Some(ref pub_name) = game.publisher {
+                        text(pub_name).size(14).color(Color::from_rgb(0.7, 0.7, 0.7))
+                    } else {
+                        text("").size(14).color(Color::TRANSPARENT)
+                    }
+                ].align_y(Alignment::Center),
+            ],
             Space::new().width(Length::Fill),
-            button(text("✕").size(18))
+            button(text(icons::CLOSE).size(24))
                 .on_press(Message::GamePopupClose)
                 .padding(8)
-                .style(|_, _| button::Style {
-                    background: None,
+                .style(|_, status| button::Style {
+                    background: Some(if status == iced_widget::button::Status::Hovered {
+                        Color::from_rgba(1.0, 1.0, 1.0, 0.1).into()
+                    } else {
+                        Color::TRANSPARENT.into()
+                    }),
                     text_color: Color::WHITE,
+                    border: iced_core::Border::default().rounded(20),
                     ..button::Style::default()
                 }),
-        ];
+        ]
+        .align_y(Alignment::Start);
         
-        let store_text = text(format!("Platform: {}", game.store))
-            .size(14)
-            .color(Color::from_rgb(0.6, 0.6, 0.6));
-        
-        let publisher_text = if let Some(ref pub_name) = game.publisher {
-            text(format!("Publisher: {}", pub_name))
-                .size(14)
-                .color(Color::from_rgb(0.6, 0.6, 0.6))
-        } else {
-            text("").size(14)
-        };
-        
+        // Description
         let desc_text = if let Some(ref desc) = game.description {
             text(desc)
-                .size(14)
-                .color(Color::from_rgb(0.8, 0.8, 0.8))
+                .size(15)
+                .color(Color::from_rgb(0.9, 0.9, 0.9))
+                .line_height(1.4)
         } else {
-            text("No description available.")
-                .size(14)
+            text("No description available for this game.")
+                .size(15)
                 .color(Color::from_rgb(0.5, 0.5, 0.5))
         };
+        
+        // Playability / Tier Info (if available in GameInfo, which it is)
+        let mut meta_rows = column![].spacing(8);
+        if let Some(ref tier) = game.membership_tier_label {
+            meta_rows = meta_rows.push(
+                row![
+                    text("Required Tier:").size(14).color(Color::from_rgb(0.7, 0.7, 0.7)),
+                    Space::new().width(8),
+                    text(tier).size(14).color(Color::from_rgb(0.467, 0.784, 0.196)),
+                ]
+            );
+        }
         
         // Variants selection
         let variants_section: Element<'a, Message, Theme, Renderer> = if game.variants.len() > 1 {
@@ -1500,10 +1735,11 @@ impl Controls {
             for (i, variant) in game.variants.iter().enumerate() {
                 let is_selected = i == game.selected_variant_index;
                 variant_btns.push(
-                    button(text(&variant.store).size(12))
-                        .padding(Padding::from([6, 12]))
+                    button(text(&variant.store).size(13))
+                        .padding(Padding::from([8, 16]))
                         .on_press(Message::VariantSelected(i))
-                        .style(move |_, _| {
+                        .style(move |_, status| {
+                             let hovered = status == iced_widget::button::Status::Hovered;
                             if is_selected {
                                 button::Style {
                                     background: Some(Color::from_rgb(0.467, 0.784, 0.196).into()),
@@ -1513,7 +1749,11 @@ impl Controls {
                                 }
                             } else {
                                 button::Style {
-                                    background: Some(Color::from_rgb(0.2, 0.2, 0.25).into()),
+                                    background: Some(if hovered { 
+                                        Color::from_rgb(0.3, 0.3, 0.35).into() 
+                                    } else { 
+                                        Color::from_rgb(0.2, 0.2, 0.25).into() 
+                                    }),
                                     text_color: Color::WHITE,
                                     border: iced_core::Border::default().rounded(6),
                                     ..button::Style::default()
@@ -1524,49 +1764,96 @@ impl Controls {
                 );
             }
             column![
-                text("Platform:").size(14).color(Color::WHITE),
+                text("Select Platform").size(14).color(Color::from_rgb(0.7, 0.7, 0.7)),
                 Space::new().height(8),
-                iced_widget::Row::with_children(variant_btns).spacing(8),
+                iced_widget::Row::with_children(variant_btns).spacing(8).wrap(),
             ]
             .into()
         } else {
             Space::new().into()
         };
         
+        // Play Button
         let play_btn = button(
-            container(text("Play").size(18))
-                .padding(Padding::from([14, 48]))
+            container(
+                row![
+                    text(icons::PLAY).size(18),
+                    Space::new().width(12),
+                    text("PLAY NOW").size(16).font(Font::with_name("Inter-Bold")),
+                ]
+                .align_y(Alignment::Center)
+            )
+            .width(Length::Fill)
+            .center_x(Length::Fill)
         )
+        .padding(Padding::from([16, 32]))
+        .width(Length::Fill)
         .on_press(Message::GameLaunch(game_clone))
-        .style(|_, _| button::Style {
-            background: Some(Color::from_rgb(0.467, 0.784, 0.196).into()),
-            text_color: Color::BLACK,
-            border: iced_core::Border::default().rounded(8),
-            ..button::Style::default()
+        .style(|_, status| {
+             let hovered = status == iced_widget::button::Status::Hovered;
+             button::Style {
+                background: Some(if hovered {
+                    Color::from_rgb(0.533, 0.847, 0.263).into()
+                } else {
+                    Color::from_rgb(0.467, 0.784, 0.196).into()
+                }),
+                text_color: Color::BLACK,
+                border: iced_core::Border::default().rounded(8),
+                shadow: iced_core::Shadow {
+                    color: if hovered { Color::from_rgba(0.467, 0.784, 0.196, 0.4) } else { Color::TRANSPARENT },
+                    offset: iced_core::Vector::new(0.0, 4.0),
+                    blur_radius: 12.0,
+                },
+                ..button::Style::default()
+            }
         });
         
-        let content = column![
-            title_row,
-            Space::new().height(16),
-            store_text,
-            publisher_text,
-            Space::new().height(16),
-            desc_text,
-            Space::new().height(16),
-            variants_section,
+        let right_column = column![
+            header,
+            Space::new().height(24),
+            scrollable(
+                column![
+                    desc_text,
+                    Space::new().height(24),
+                    meta_rows,
+                    Space::new().height(24),
+                    variants_section,
+                ]
+            ).height(Length::Fill),
             Space::new().height(24),
             play_btn,
         ]
-        .padding(24);
+        .width(Length::Fill)
+        .height(Length::Fill);
         
-        container(content)
-            .width(500)
+        let content = row![
+            img_section,
+            Space::new().width(32),
+            right_column,
+        ]
+        .padding(32);
+        
+        // We wrap the content in a dummy button to capture clicks (prevent closing)
+        // This is a workaround since container doesn't block clicks by default in some Iced versions
+        let card = container(content)
+            .width(800)
+            .height(550)
             .style(|_| container::Style {
                 background: Some(Color::from_rgb(0.1, 0.1, 0.14).into()),
-                border: iced_core::Border::default().rounded(12),
+                border: iced_core::Border::default().rounded(16),
+                shadow: iced_core::Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.6),
+                    offset: iced_core::Vector::new(0.0, 20.0),
+                    blur_radius: 40.0,
+                },
                 ..container::Style::default()
-            })
-            .into()
+            });
+            
+        // Wrap in button with NO message (disabled?) No, disabled passes clicks?
+        // Actually, if we give it a message that does nothing...
+        // But `button` changes cursor.
+        // Let's rely on standard behavior first. If click-through happens, we can fix it.
+        card.into()
     }
     
     /// Stats overlay view for streaming (F3 to toggle)

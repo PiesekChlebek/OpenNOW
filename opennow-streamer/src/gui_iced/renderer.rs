@@ -4,7 +4,7 @@
 //! Based on iced's integration example.
 
 use anyhow::{Context, Result};
-use log::{error, info};
+use log::{debug, error, info, warn};
 use std::sync::Arc;
 
 use iced_wgpu::graphics::{Shell, Viewport};
@@ -30,6 +30,8 @@ use super::image_cache;
 use super::shaders::{NV12_SHADER, P010_SHADER};
 use crate::app::{AppState, GameInfo, GameSection, ServerInfo, Settings, SubscriptionInfo, UiAction};
 use crate::media::{ColorRange, ColorSpace, PixelFormat, VideoFrame};
+
+
 
 /// Response from handling an event
 #[derive(Debug, Clone, Default)]
@@ -175,7 +177,7 @@ impl Renderer {
             present_mode: wgpu::PresentMode::AutoVsync,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
-            desired_maximum_frame_latency: 2,
+            desired_maximum_frame_latency: 1, // Minimum queue depth for lowest latency
         };
         surface.configure(&device, &surface_config);
         
@@ -511,6 +513,8 @@ impl Renderer {
         if frame.frame_id == self.last_uploaded_frame_id {
             return;
         }
+        
+        // Upload plane data from frame.y_plane/u_plane
         
         // Calculate UV plane dimensions (half resolution for 4:2:0 subsampling)
         let uv_width = (frame.width + 1) / 2;

@@ -363,15 +363,33 @@ jobs:
 
           Write-Host "GStreamer ARM64 setup complete (using x64 under emulation)"
 
-      # ==================== FFmpeg Installation (macOS only) ====================
+      # ==================== GStreamer Installation (macOS) ====================
 
-      - name: Install FFmpeg (macOS)
+      - name: Install GStreamer (macOS)
         if: matrix.target == 'macos'
         run: |
-          brew install ffmpeg pkg-config
-          echo "FFmpeg installed via Homebrew"
-          # Note: macOS uses FFmpeg for video (VideoToolbox) and audio (Opus) decoding
-          # GStreamer is NOT used on macOS - only on Linux and Windows x64
+          echo "Installing GStreamer via Homebrew..."
+          brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav pkg-config
+          
+          # Set PKG_CONFIG_PATH for GStreamer
+          GST_PREFIX=$(brew --prefix gstreamer)
+          echo "GStreamer prefix: $GST_PREFIX"
+          echo "PKG_CONFIG_PATH=$GST_PREFIX/lib/pkgconfig:$(brew --prefix)/lib/pkgconfig" >> $GITHUB_ENV
+          
+          # Verify installation
+          echo ""
+          echo "=== GStreamer Version ==="
+          gst-inspect-1.0 --version
+          
+          echo ""
+          echo "=== Checking for vtdec (VideoToolbox decoder) ==="
+          gst-inspect-1.0 vtdec || echo "vtdec not found (will use software decoder)"
+          
+          echo ""
+          echo "=== Available video decoders ==="
+          gst-inspect-1.0 | grep -E "vtdec|avdec_h264|avdec_h265|av1dec" || true
+          
+          echo "GStreamer installed via Homebrew"
 
       # ==================== GStreamer Installation (Linux) ====================
 
@@ -379,6 +397,8 @@ jobs:
         if: matrix.target == 'linux'
         run: |
           sudo apt-get update
+          
+          # Install build dependencies first
           sudo apt-get install -y \
             pkg-config \
             libasound2-dev \
@@ -389,7 +409,16 @@ jobs:
             libudev-dev \
             clang \
             libclang-dev \
-            libunwind-dev \
+            libunwind-dev
+          
+          # Try to add GStreamer PPA for newer versions (1.24+)
+          # This PPA provides GStreamer 1.24.x for Ubuntu 22.04
+          echo "Adding GStreamer PPA for newer version..."
+          sudo add-apt-repository -y ppa:ubuntuhandbook1/gstreamer || true
+          sudo apt-get update || true
+          
+          # Install GStreamer (will get newer version if PPA worked, otherwise fallback to distro version)
+          sudo apt-get install -y \
             libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev \
             libgstreamer-plugins-bad1.0-dev \
@@ -400,8 +429,16 @@ jobs:
             gstreamer1.0-libav \
             gstreamer1.0-tools
 
-          echo "GStreamer development libraries installed"
+          echo ""
+          echo "=== GStreamer Version ==="
           gst-inspect-1.0 --version
+          
+          # Check for important decoders
+          echo ""
+          echo "=== Available Decoders ==="
+          gst-inspect-1.0 | grep -E "vah264dec|vaav1dec|avdec_h264|avdec_h265|av1dec" || echo "Some decoders may not be available"
+          
+          echo "GStreamer development libraries installed"
 
       - name: Install GStreamer (Linux ARM64)
         if: matrix.target == 'linux-arm64'
@@ -689,36 +726,99 @@ jobs:
           }
 
           echo ""
-          echo "=== Phase 1a: Explicitly copy FFmpeg libraries ==="
-          # FFmpeg libraries might not show up in otool if dlopened or linked with @rpath
+          echo "=== Phase 1a: Explicitly copy GStreamer libraries ==="
+          # GStreamer libraries might not show up in otool if dlopened or linked with @rpath
           # So we explicitly find and copy them
 
-          FFMPEG_PREFIX=$(brew --prefix ffmpeg)
-          echo "FFmpeg prefix: $FFMPEG_PREFIX"
+          BREW_PREFIX=$(brew --prefix)
+          GST_PREFIX=$(brew --prefix gstreamer)
+          echo "Homebrew prefix: $BREW_PREFIX"
+          echo "GStreamer prefix: $GST_PREFIX"
 
-          # List of core FFmpeg libraries to bundle
-          FFMPEG_LIBS=(
-            "libavcodec"
-            "libavdevice"
-            "libavfilter"
-            "libavformat"
-            "libavutil"
-            "libswresample"
-            "libswscale"
+          # List of core GStreamer libraries to bundle
+          GST_LIBS=(
+            "libgstreamer-1.0"
+            "libgstbase-1.0"
+            "libgstapp-1.0"
+            "libgstaudio-1.0"
+            "libgstvideo-1.0"
+            "libgstpbutils-1.0"
+            "libgstrtp-1.0"
+            "libgstcodecs-1.0"
+            "libgstgl-1.0"
+            "libgstcodecparsers-1.0"
+            "libgsttag-1.0"
+            "libgstfft-1.0"
           )
 
-          for lib_base in "${FFMPEG_LIBS[@]}"; do
-             echo "Looking for $lib_base in $FFMPEG_PREFIX/lib..."
-             FOUND_LIBS=$(find "$FFMPEG_PREFIX/lib" -name "${lib_base}.*.dylib" -type f )
+          # GLib dependencies (required by GStreamer)
+          GLIB_LIBS=(
+            "libglib-2.0"
+            "libgobject-2.0"
+            "libgmodule-2.0"
+            "libgio-2.0"
+            "libgthread-2.0"
+            "libintl"
+            "libffi"
+            "liborc-0.4"
+            "libpcre2-8"
+          )
 
-             for lib in $FOUND_LIBS; do
-                echo "Found FFmpeg lib: $lib"
-                copy_lib "$lib"
+          # Search in both GStreamer prefix and general Homebrew lib
+          SEARCH_PATHS=("$GST_PREFIX/lib" "$BREW_PREFIX/lib")
+
+          for lib_base in "${GST_LIBS[@]}" "${GLIB_LIBS[@]}"; do
+             for search_path in "${SEARCH_PATHS[@]}"; do
+               if [ -d "$search_path" ]; then
+                 FOUND_LIBS=$(find "$search_path" -maxdepth 1 -name "${lib_base}*.dylib" -type f 2>/dev/null || true)
+                 for lib in $FOUND_LIBS; do
+                    echo "Found lib: $lib"
+                    copy_lib "$lib"
+                 done
+               fi
              done
           done
 
-          # Note: GStreamer is NOT used on macOS - only FFmpeg is used for video/audio decoding
-          # GStreamer is only used on Linux and Windows x64
+          # Copy GStreamer plugins
+          echo ""
+          echo "=== Phase 1b: Copy GStreamer plugins ==="
+          GST_PLUGIN_DIR="$GST_PREFIX/lib/gstreamer-1.0"
+          BUNDLE_PLUGIN_DIR="$FRAMEWORKS_DIR/gstreamer-1.0"
+          
+          if [ -d "$GST_PLUGIN_DIR" ]; then
+            mkdir -p "$BUNDLE_PLUGIN_DIR"
+            echo "Copying plugins from $GST_PLUGIN_DIR..."
+            
+            # Essential plugins for video decoding
+            ESSENTIAL_PLUGINS=(
+              "libgstapplemedia.dylib"    # VideoToolbox (vtdec)
+              "libgstlibav.dylib"         # Software decoders (avdec_h264, etc.)
+              "libgstvideoparsersbad.dylib" # h264parse, h265parse, av1parse
+              "libgstcoreelements.dylib"  # appsrc, appsink
+              "libgstapp.dylib"           # app elements
+              "libgstvideoconvertscale.dylib" # videoconvert
+              "libgstaudioconvert.dylib"  # audio processing
+              "libgstaudioresample.dylib" # audio resampling
+              "libgstopus.dylib"          # Opus audio codec
+              "libgstaudioparsers.dylib"  # Audio parsers
+              "libgstplayback.dylib"      # playback elements
+              "libgsttypefindfunctions.dylib" # type detection
+              "libgstautodetect.dylib"    # auto detection
+              "libgstvolume.dylib"        # volume control
+            )
+            
+            for plugin in "${ESSENTIAL_PLUGINS[@]}"; do
+              if [ -f "$GST_PLUGIN_DIR/$plugin" ]; then
+                echo "Copying plugin: $plugin"
+                cp "$GST_PLUGIN_DIR/$plugin" "$BUNDLE_PLUGIN_DIR/"
+              fi
+            done
+            
+            PLUGIN_COUNT=$(ls -1 "$BUNDLE_PLUGIN_DIR"/*.dylib 2>/dev/null | wc -l || echo 0)
+            echo "Copied $PLUGIN_COUNT essential plugins"
+          else
+            echo "WARNING: GStreamer plugin directory not found at $GST_PLUGIN_DIR"
+          fi
 
           echo ""
           echo "=== Phase 2: Copy direct dependencies detected by otool ==="
@@ -772,23 +872,36 @@ jobs:
           # Fix the main binary
           fix_refs "$MACOS_DIR/$APP_NAME"
 
-          # Fix all bundled libraries
+          # Fix all bundled libraries in Frameworks
           if ls "$FRAMEWORKS_DIR/"*.dylib 1>/dev/null 2>&1; then
             for bundled_lib in "$FRAMEWORKS_DIR/"*.dylib; do
               [ -f "$bundled_lib" ] || continue
               fix_refs "$bundled_lib"
             done
           fi
+          
+          # Fix bundled GStreamer plugins
+          if ls "$FRAMEWORKS_DIR/gstreamer-1.0/"*.dylib 1>/dev/null 2>&1; then
+            for bundled_lib in "$FRAMEWORKS_DIR/gstreamer-1.0/"*.dylib; do
+              [ -f "$bundled_lib" ] || continue
+              # Fix references to Homebrew libs
+              for dep in $(otool -L "$bundled_lib" 2>/dev/null | grep -E '/opt/homebrew|/usr/local' | awk '{print $1}'); do
+                depname=$(basename "$dep")
+                if [ -f "$FRAMEWORKS_DIR/$depname" ]; then
+                  install_name_tool -change "$dep" "@executable_path/../Frameworks/$depname" "$bundled_lib" 2>/dev/null || true
+                fi
+              done
+            done
+          fi
 
-          # Special pass: Fix FFmpeg internal references
-          # e.g. libavformat linking to libavcodec
+          # Special pass: Fix GStreamer internal references
           echo "Fixing internal references in bundled libs..."
           if ls "$FRAMEWORKS_DIR/"*.dylib 1>/dev/null 2>&1; then
             for bundled_lib in "$FRAMEWORKS_DIR/"*.dylib; do
                # For each bundled lib, check if it references other bundled libs via absolute path
                # and rewrite those to @loader_path
                for dep in $(otool -L "$bundled_lib" 2>/dev/null | grep -E '/opt/homebrew|/usr/local' | awk '{print $1}'); do
-                  local depname=$(basename "$dep")
+                  depname=$(basename "$dep")
                   if [ -f "$FRAMEWORKS_DIR/$depname" ]; then
                       echo "  Fixing ref in $(basename "$bundled_lib") to $depname"
                       install_name_tool -change "$dep" "@loader_path/$depname" "$bundled_lib" 2>/dev/null || true
@@ -797,7 +910,7 @@ jobs:
             done
           fi
 
-          # Special pass: Rewrite @rpath references (e.g. libwebp -> libsharpyuv)
+          # Special pass: Rewrite @rpath references
           echo "Rewriting @rpath references in bundled libs..."
           if ls "$FRAMEWORKS_DIR/"*.dylib 1>/dev/null 2>&1; then
             for bundled_lib in "$FRAMEWORKS_DIR/"*.dylib; do
@@ -807,6 +920,18 @@ jobs:
                   if [ -f "$FRAMEWORKS_DIR/$filename" ]; then
                       echo "  Rewriting @rpath ref in $(basename "$bundled_lib"): $dep -> @loader_path/$filename"
                       install_name_tool -change "$dep" "@loader_path/$filename" "$bundled_lib" 2>/dev/null || true
+                  fi
+               done
+            done
+          fi
+          
+          # Fix @rpath in GStreamer plugins too
+          if ls "$FRAMEWORKS_DIR/gstreamer-1.0/"*.dylib 1>/dev/null 2>&1; then
+            for bundled_lib in "$FRAMEWORKS_DIR/gstreamer-1.0/"*.dylib; do
+               for dep in $(otool -L "$bundled_lib" 2>/dev/null | grep "@rpath/" | awk '{print $1}'); do
+                  filename="${dep#@rpath/}"
+                  if [ -f "$FRAMEWORKS_DIR/$filename" ]; then
+                      install_name_tool -change "$dep" "@executable_path/../Frameworks/$filename" "$bundled_lib" 2>/dev/null || true
                   fi
                done
             done
@@ -840,6 +965,16 @@ jobs:
               codesign --force --sign - "$lib" 2>/dev/null || true
             fi
           done
+          
+          # Sign GStreamer plugins
+          echo "Signing GStreamer plugins..."
+          if ls "$FRAMEWORKS_DIR/gstreamer-1.0/"*.dylib 1>/dev/null 2>&1; then
+            for lib in "$FRAMEWORKS_DIR/gstreamer-1.0/"*.dylib; do
+              if [ -f "$lib" ]; then
+                codesign --force --sign - "$lib" 2>/dev/null || true
+              fi
+            done
+          fi
 
           # Sign the main binary
           echo "Signing main binary..."
@@ -1077,12 +1212,22 @@ jobs:
             ### Downloads
             - **Windows x64**: Portable executable with bundled GStreamer
             - **Windows ARM64**: Portable executable with bundled GStreamer (Surface Pro X, etc.)
-            - **macOS ARM64**: Apple Silicon native binary with bundled FFmpeg + GStreamer (Intel Macs can use Rosetta 2)
+            - **macOS ARM64**: Apple Silicon native binary with bundled GStreamer (Intel Macs can use Rosetta 2)
             - **Linux x64**: AppImage with bundled GStreamer
             - **Linux ARM64**: Portable binary (requires system GStreamer - see below)
 
-            **Linux ARM64 users**: Install GStreamer via your package manager:
+            ### Quick Install (Linux/macOS)
+            
+            **One-line installer** (installs GStreamer dependencies and downloads OpenNOW):
             ```bash
+            curl -fsSL https://raw.githubusercontent.com/zortos293/OpenNOW/main/scripts/install.sh | bash
+            ```
+
+            **Manual GStreamer installation**:
+            ```bash
+            # macOS (Homebrew)
+            brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav
+
             # Ubuntu/Debian
             sudo apt install gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly gstreamer1.0-libav
 

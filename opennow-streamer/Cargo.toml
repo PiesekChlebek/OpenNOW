@@ -127,8 +127,10 @@ metal = "0.33"
 wgpu-hal = { version = "28", features = ["metal"] }
 foreign-types = "0.5"
 block = "0.1"
-# FFmpeg for video/audio decoding on macOS (VideoToolbox hardware acceleration)
-ffmpeg-next = "8"
+# GStreamer for video decoding on macOS (VideoToolbox hardware acceleration via vtdec)
+gstreamer = "0.23"
+gstreamer-video = "0.23"
+gstreamer-app = "0.23"
 
 [target.'cfg(windows)'.dependencies.wgpu-hal]
 version = "28"

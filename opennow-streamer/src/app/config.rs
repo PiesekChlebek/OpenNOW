@@ -320,11 +320,8 @@ pub enum VideoDecoderBackend {
     Qsv,
     /// AMD VA-API
     Vaapi,
-    /// DirectX 11/12 (Windows) via FFmpeg
+    /// DirectX 11/12 (Windows) via GStreamer
     Dxva,
-    /// Native D3D11 Video decoder (Windows) - bypasses FFmpeg
-    /// This is the NVIDIA-style approach with proper RTArray support
-    NativeDxva,
     /// VideoToolbox (macOS)
     VideoToolbox,
     /// Vulkan Video (Linux) - cross-GPU hardware decode via Vulkan extensions
@@ -343,7 +340,6 @@ impl VideoDecoderBackend {
             VideoDecoderBackend::Qsv => "QuickSync",
             VideoDecoderBackend::Vaapi => "VA-API",
             VideoDecoderBackend::Dxva => "D3D11 (GStreamer)",
-            VideoDecoderBackend::NativeDxva => "Native D3D11 (HEVC only)",
             VideoDecoderBackend::VideoToolbox => "VideoToolbox",
             VideoDecoderBackend::VulkanVideo => "GStreamer HW",
             VideoDecoderBackend::Software => "Software",
@@ -386,14 +382,6 @@ impl VideoDecoderBackend {
                  Compatibility: Windows with any modern GPU\n\
                  Note: Recommended for Windows (supports H.264 and H.265)"
             }
-            VideoDecoderBackend::NativeDxva => {
-                "Direct D3D11 Video decoder (EXPERIMENTAL).\n\n\
-                 Backend: Native Windows D3D11 Video API\n\
-                 Performance: Zero-copy to GPU, lowest latency\n\
-                 Compatibility: Windows 8+ with D3D11 GPU\n\
-                 WARNING: Only supports H.265/HEVC! H.264 will fail.\n\
-                 Use 'D3D11 (GStreamer)' for H.264 streams."
-            }
             VideoDecoderBackend::VideoToolbox => {
                 "macOS hardware decoding using Apple's VideoToolbox.\n\n\
                  Backend: FFmpeg + VideoToolbox\n\
@@ -427,7 +415,6 @@ impl VideoDecoderBackend {
             VideoDecoderBackend::Qsv => "GStreamer QSV",
             VideoDecoderBackend::Vaapi => "GStreamer VA-API",
             VideoDecoderBackend::Dxva => "GStreamer D3D11",
-            VideoDecoderBackend::NativeDxva => "Native D3D11",
             VideoDecoderBackend::VideoToolbox => "FFmpeg VT",
             VideoDecoderBackend::VulkanVideo => "GStreamer HW",
             VideoDecoderBackend::Software => "GStreamer CPU",
@@ -441,7 +428,6 @@ impl VideoDecoderBackend {
             VideoDecoderBackend::Qsv,
             VideoDecoderBackend::Vaapi,
             VideoDecoderBackend::Dxva,
-            VideoDecoderBackend::NativeDxva,
             VideoDecoderBackend::VideoToolbox,
             VideoDecoderBackend::VulkanVideo,
             VideoDecoderBackend::Software,

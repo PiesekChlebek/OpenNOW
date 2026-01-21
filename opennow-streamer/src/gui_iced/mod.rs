@@ -8,6 +8,7 @@ mod controls;
 mod screens;
 mod shaders;
 mod theme;
+pub mod icons;
 
 pub mod image_cache;
 

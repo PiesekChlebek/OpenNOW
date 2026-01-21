@@ -3,12 +3,14 @@
 //! Hardware-accelerated video decoding using GStreamer.
 //!
 //! Platform support:
-//! - Windows: H.264 via D3D11 hardware acceleration (d3d11h264dec)
-//! - Linux (Raspberry Pi): H.264/HEVC via V4L2 (v4l2h264dec, v4l2h265dec)
-//! - Linux (Desktop): H.264/HEVC via VA-API (vaapih264dec, vaapih265dec)
+//! - Windows: H.264/H.265/AV1 via D3D11 hardware acceleration (d3d11h264dec, d3d11h265dec, d3d11av1dec)
+//! - macOS: H.264/H.265/AV1 via VideoToolbox hardware acceleration (vtdec)
+//! - Linux (Raspberry Pi): H.264/HEVC/AV1 via V4L2 (v4l2h264dec, v4l2h265dec, v4l2av1dec)
+//! - Linux (Desktop): H.264/HEVC/AV1 via VA-API (vah264dec, vah265dec, vaav1dec)
 //!
 //! Pipeline structures:
 //! - Windows: appsrc -> h264parse -> d3d11h264dec -> d3d11download -> videoconvert -> appsink
+//! - macOS: appsrc -> h264parse -> vtdec -> videoconvert -> appsink
 //! - Linux V4L2: appsrc -> h264parse -> v4l2h264dec -> videoconvert -> appsink
 //! - Linux VA-API: appsrc -> h264parse -> vaapih264dec -> videoconvert -> appsink
 //!
@@ -19,6 +21,13 @@
 //! 1. `gstreamer/` subdirectory next to the executable
 //! 2. System-installed GStreamer (GSTREAMER_1_0_ROOT_MSVC_X86_64 environment variable)
 //! 3. Standard GStreamer installation paths
+//!
+//! ## macOS GStreamer Installation
+//!
+//! On macOS, GStreamer can be installed via Homebrew:
+//!   brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav
+//!
+//! The vtdec element provides VideoToolbox hardware acceleration for H.264, H.265, and AV1.
 
 use anyhow::{anyhow, Result};
 use gstreamer as gst;
@@ -83,6 +92,91 @@ pub fn init_gstreamer() -> Result<()> {
         // Now initialize GStreamer after PATH is set up
         unsafe {
             INIT_RESULT = Some(gst::init().map_err(|e| e.to_string()));
+        }
+    });
+
+    // Return cached result
+    unsafe {
+        match &INIT_RESULT {
+            Some(Ok(())) => Ok(()),
+            Some(Err(e)) => Err(anyhow!("Failed to initialize GStreamer: {}", e)),
+            None => Err(anyhow!("GStreamer initialization not completed")),
+        }
+    }
+}
+
+/// Initialize GStreamer (macOS)
+///
+/// On macOS, GStreamer is typically installed via Homebrew or the official GStreamer.framework.
+/// We use the system-installed GStreamer and rely on vtdec for VideoToolbox hardware acceleration.
+#[cfg(target_os = "macos")]
+pub fn init_gstreamer() -> Result<()> {
+    use std::env;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+    static mut INIT_RESULT: Option<Result<(), String>> = None;
+
+    // Thread-safe one-time initialization
+    INIT.call_once(|| {
+        // Check for Homebrew GStreamer installation
+        let homebrew_gst = if cfg!(target_arch = "aarch64") {
+            "/opt/homebrew/lib/gstreamer-1.0"
+        } else {
+            "/usr/local/lib/gstreamer-1.0"
+        };
+
+        if std::path::Path::new(homebrew_gst).exists() {
+            info!("Found Homebrew GStreamer at: {}", homebrew_gst);
+            // Homebrew sets up paths correctly, no need to override
+        } else {
+            // Check for GStreamer.framework (official installer)
+            let framework_path = "/Library/Frameworks/GStreamer.framework";
+            if std::path::Path::new(framework_path).exists() {
+                info!("Found GStreamer.framework at: {}", framework_path);
+                let plugin_path = format!("{}/Libraries", framework_path);
+                env::set_var("GST_PLUGIN_PATH", &plugin_path);
+            } else {
+                warn!("GStreamer not found. Please install via Homebrew:");
+                warn!("  brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav");
+            }
+        }
+
+        // Initialize GStreamer
+        if let Err(e) = gst::init() {
+            unsafe {
+                INIT_RESULT = Some(Err(e.to_string()));
+            }
+            return;
+        }
+
+        // Log available decoders for debugging
+        let registry = gst::Registry::get();
+        let vtdec = registry
+            .find_feature("vtdec", gst::ElementFactory::static_type())
+            .is_some();
+        let avdec_h264 = registry
+            .find_feature("avdec_h264", gst::ElementFactory::static_type())
+            .is_some();
+        let avdec_h265 = registry
+            .find_feature("avdec_h265", gst::ElementFactory::static_type())
+            .is_some();
+        let av1dec = registry
+            .find_feature("av1dec", gst::ElementFactory::static_type())
+            .is_some();
+
+        info!(
+            "GStreamer macOS decoders: vtdec(VideoToolbox)={}, avdec_h264={}, avdec_h265={}, av1dec={}",
+            vtdec, avdec_h264, avdec_h265, av1dec
+        );
+
+        if !vtdec && !avdec_h264 {
+            warn!("No video decoders found! Install GStreamer plugins:");
+            warn!("  brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav");
+        }
+
+        unsafe {
+            INIT_RESULT = Some(Ok(()));
         }
     });
 
@@ -265,6 +359,18 @@ impl GstCodec {
             GstCodec::H264 => "d3d11h264dec",
             GstCodec::H265 => "d3d11h265dec",
             GstCodec::AV1 => "d3d11av1dec",
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn decoder_element(&self) -> &'static str {
+        // macOS: vtdec uses VideoToolbox for hardware acceleration
+        // vtdec auto-detects codec from input caps, so same element for all codecs
+        // Note: vtdec supports H.264, H.265, and hardware AV1 on M3+ chips
+        match self {
+            GstCodec::H264 => "vtdec",
+            GstCodec::H265 => "vtdec",
+            GstCodec::AV1 => "vtdec", // M3+ Macs have hardware AV1
         }
     }
 
@@ -679,6 +785,45 @@ impl GStreamerDecoder {
             }
         }
 
+        #[cfg(target_os = "macos")]
+        {
+            // macOS: Use vtdec for VideoToolbox hardware acceleration
+            // vtdec automatically uses VideoToolbox and supports H.264, H.265, and AV1 (M3+ chips)
+            //
+            // Pipeline: appsrc -> parser -> vtdec -> videoconvert -> appsink
+            // vtdec outputs various formats, videoconvert normalizes to NV12
+
+            if hw_decoder_available {
+                info!("Using VideoToolbox hardware decoder: vtdec");
+                Ok(format!(
+                    "appsrc name=src is-live=true format=time do-timestamp=true max-buffers=1 \
+                     ! {} \
+                     ! vtdec \
+                     ! videoconvert n-threads=2 \
+                     ! video/x-raw,format=NV12 \
+                     ! appsink name=sink emit-signals=true {}",
+                    parser, sink_opts
+                ))
+            } else {
+                // Fallback to software decoder
+                let sw_decoder = config.codec.software_decoder();
+                warn!(
+                    "vtdec not available, falling back to software decoder: {}",
+                    sw_decoder
+                );
+                warn!("Install GStreamer plugins: brew install gst-plugins-bad");
+                Ok(format!(
+                    "appsrc name=src is-live=true format=time do-timestamp=true max-buffers=1 \
+                     ! {} \
+                     ! {} \
+                     ! videoconvert n-threads=4 \
+                     ! video/x-raw,format=NV12 \
+                     ! appsink name=sink emit-signals=true {}",
+                    parser, sw_decoder, sink_opts
+                ))
+            }
+        }
+
         #[cfg(target_os = "linux")]
         {
             // Linux decoder priority (from best to fallback):
@@ -909,6 +1054,56 @@ pub fn is_gstreamer_available() -> bool {
         true
     } else {
         debug!("GStreamer decoders not available");
+        false
+    }
+}
+
+/// Check if GStreamer hardware decoding is available (macOS - VideoToolbox)
+#[cfg(target_os = "macos")]
+pub fn is_gstreamer_available() -> bool {
+    // Initialize GStreamer
+    if init_gstreamer().is_err() {
+        return false;
+    }
+
+    // Check for VideoToolbox decoder (vtdec) and software fallbacks
+    let registry = gst::Registry::get();
+    let vtdec = registry
+        .find_feature("vtdec", gst::ElementFactory::static_type())
+        .is_some();
+    let avdec_h264 = registry
+        .find_feature("avdec_h264", gst::ElementFactory::static_type())
+        .is_some();
+    let avdec_h265 = registry
+        .find_feature("avdec_h265", gst::ElementFactory::static_type())
+        .is_some();
+    let av1dec = registry
+        .find_feature("av1dec", gst::ElementFactory::static_type())
+        .is_some();
+
+    // Also check for required parsers
+    let h264parse = registry
+        .find_feature("h264parse", gst::ElementFactory::static_type())
+        .is_some();
+    let h265parse = registry
+        .find_feature("h265parse", gst::ElementFactory::static_type())
+        .is_some();
+
+    if vtdec && h264parse {
+        info!(
+            "GStreamer macOS decoders available: vtdec(VideoToolbox)={}, h264parse={}, h265parse={}",
+            vtdec, h264parse, h265parse
+        );
+        true
+    } else if (avdec_h264 || avdec_h265 || av1dec) && h264parse {
+        info!(
+            "GStreamer software decoders available: H.264={}, H.265={}, AV1={}",
+            avdec_h264, avdec_h265, av1dec
+        );
+        true
+    } else {
+        debug!("GStreamer decoders not available on macOS");
+        warn!("Install GStreamer: brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly gst-libav");
         false
     }
 }
