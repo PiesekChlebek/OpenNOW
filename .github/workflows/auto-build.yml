@@ -162,7 +162,9 @@ jobs:
             target: linux
             arch: x86_64
             rust_target: x86_64-unknown-linux-gnu
-          - platform: ubuntu-22.04
+          # Linux ARM64: Use native ARM64 runner instead of cross-compilation
+          # This avoids the libunwind-dev and glib ABI conflicts
+          - platform: ubuntu-22.04-arm
             target: linux-arm64
             arch: aarch64
             rust_target: aarch64-unknown-linux-gnu
@@ -221,10 +223,7 @@ jobs:
 
       # macOS builds natively for ARM64 (macos-latest is ARM64)
       # Intel Mac users can use Rosetta 2 to run ARM64 binaries
-
-      - name: Add Linux ARM64 target
-        if: matrix.target == 'linux-arm64'
-        run: rustup target add aarch64-unknown-linux-gnu
+      # Linux ARM64 builds natively on ubuntu-22.04-arm (no cross-compilation)
 
       - name: Add Windows ARM64 target
         if: matrix.target == 'windows-arm64'
@@ -440,81 +439,47 @@ jobs:
           
           echo "GStreamer development libraries installed"
 
+      # Linux ARM64: Native compilation on ARM64 runner (no cross-compilation needed!)
+      # This uses GitHub's native ARM64 runners which are free for public repos
       - name: Install GStreamer (Linux ARM64)
         if: matrix.target == 'linux-arm64'
         run: |
           sudo apt-get update
-
-          # Install native x64 build tools and cross-compilation toolchain
+          
+          # Install build dependencies
           sudo apt-get install -y \
-            gcc-aarch64-linux-gnu \
-            g++-aarch64-linux-gnu \
             pkg-config \
+            libasound2-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libgl1-mesa-dev \
+            libudev-dev \
             clang \
             libclang-dev \
-            wget \
-            curl
-
-          # For ARM64 cross-compilation, we use a different approach:
-          # 1. Install x64 GStreamer for the Rust gstreamer-sys build script to find headers
-          # 2. The actual ARM64 GStreamer libraries will be loaded at runtime on the target system
-          #
-          # This works because:
-          # - gstreamer-rs uses pkg-config to find headers during compilation
-          # - The headers are architecture-independent
-          # - Runtime libraries are loaded dynamically from the target system
+            libunwind-dev
           
-          # Install native x64 GStreamer dev packages (for headers and build scripts)
+          # Install GStreamer (native ARM64 packages - no cross-compilation issues!)
           sudo apt-get install -y \
             libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev \
-            libgstreamer-plugins-bad1.0-dev
-          
-          # Install other ARM64 dependencies that don't conflict with glib
-          # Enable ARM64 architecture
-          sudo dpkg --add-architecture arm64
-          
-          # Add ARM64 repositories
-          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          
-          sudo apt-get update
-          
-          # Install only the minimal ARM64 libraries needed for linking (no glib-dependent packages)
-          # These are safe because they don't pull in libglib2.0
-          sudo apt-get install -y \
-            libssl-dev:arm64 \
-            libasound2-dev:arm64 \
-            libudev-dev:arm64 || true
-          
-          # Note: We intentionally skip ARM64 GStreamer packages because:
-          # 1. They conflict with x64 glib (ABI incompatibility)
-          # 2. GStreamer will be loaded at runtime from the target system
-          # 3. The release notes instruct users to install GStreamer on ARM64
-
-          # Set cross-compilation environment
-          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          # Use native x64 pkg-config paths for GStreamer headers
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig" >> $GITHUB_ENV
-          # Tell the linker to skip GStreamer libs (will be loaded at runtime)
-          echo "PKG_CONFIG_SYSROOT_DIR=/" >> $GITHUB_ENV
-
-          # Set OpenSSL paths for ARM64 cross-compilation
-          echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
+            libgstreamer-plugins-bad1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav \
+            gstreamer1.0-tools
 
           echo ""
-          echo "=== GStreamer headers (x64, for compilation) ==="
-          pkg-config --cflags gstreamer-1.0 || echo "GStreamer pkg-config not found"
+          echo "=== GStreamer Version ==="
+          gst-inspect-1.0 --version
           
           echo ""
-          echo "GStreamer ARM64 cross-compilation setup complete"
-          echo "Note: ARM64 users must install GStreamer on their system"
+          echo "=== Available Decoders ==="
+          gst-inspect-1.0 | grep -E "v4l2|avdec_h264|avdec_h265|av1dec" || echo "Some decoders may not be available"
+          
+          echo "GStreamer ARM64 native installation complete"
 
       # ==================== Build Native Client ====================
 
@@ -566,8 +531,9 @@ jobs:
         shell: bash
         working-directory: opennow-streamer
         run: |
-          echo "Building for Linux ARM64..."
-          cargo build --release --target aarch64-unknown-linux-gnu --verbose
+          echo "Building for Linux ARM64 (native compilation on ARM64 runner)..."
+          # No --target flag needed - we're building natively on ARM64
+          cargo build --release --verbose
 
       # ==================== Bundle GStreamer Libraries ====================
 
@@ -1024,8 +990,9 @@ jobs:
         run: |
           cd opennow-streamer
 
-          BINARY="target/aarch64-unknown-linux-gnu/release/opennow-streamer"
-          BUNDLE_DIR="target/aarch64-unknown-linux-gnu/release/bundle"
+          # Native ARM64 build - binary is in target/release (not target/aarch64-unknown-linux-gnu/release)
+          BINARY="target/release/opennow-streamer"
+          BUNDLE_DIR="target/release/bundle"
           LIB_DIR="$BUNDLE_DIR/lib"
           GST_PLUGIN_DIR="$BUNDLE_DIR/lib/gstreamer-1.0"
 
@@ -1069,22 +1036,13 @@ jobs:
           fi
 
           # Count bundled files
-          LIB_COUNT=$(ls -1 "$LIB_DIR"/*.so* 2>/dev/null | wc -l)
-          PLUGIN_COUNT=$(ls -1 "$GST_PLUGIN_DIR"/*.so 2>/dev/null | wc -l)
+          LIB_COUNT=$(ls -1 "$LIB_DIR"/*.so* 2>/dev/null | wc -l || echo 0)
+          PLUGIN_COUNT=$(ls -1 "$GST_PLUGIN_DIR"/*.so 2>/dev/null | wc -l || echo 0)
           echo "Bundled $LIB_COUNT libraries and $PLUGIN_COUNT plugins"
 
           # Create wrapper script that sets library paths
-          # NOTE: We intentionally do NOT set GST_PLUGIN_PATH to bundled plugins.
-          # The bundled GStreamer plugins may be ABI-incompatible with the user's system GLib.
-          # Instead, we rely on system-installed GStreamer plugins which are guaranteed compatible.
-          # The Rust code (init_gstreamer) handles this by clearing any bundled paths.
-          #
-          # Users must install GStreamer plugins via their package manager:
-          #   Ubuntu/Debian: sudo apt install gstreamer1.0-plugins-bad gstreamer1.0-plugins-good gstreamer1.0-libav
-          #   Fedora: sudo dnf install gstreamer1-plugins-bad-free gstreamer1-plugins-good gstreamer1-libav
           echo '#!/bin/bash' > "$BUNDLE_DIR/run.sh"
           echo 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"' >> "$BUNDLE_DIR/run.sh"
-          echo '# Only set LD_LIBRARY_PATH for core libs, NOT GStreamer plugins (use system plugins)' >> "$BUNDLE_DIR/run.sh"
           echo 'export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"' >> "$BUNDLE_DIR/run.sh"
           echo 'export GST_REGISTRY_UPDATE=yes' >> "$BUNDLE_DIR/run.sh"
           echo 'exec "$SCRIPT_DIR/opennow-streamer" "$@"' >> "$BUNDLE_DIR/run.sh"
@@ -1092,8 +1050,6 @@ jobs:
 
           echo ""
           echo "Bundle created at: $BUNDLE_DIR"
-          echo "Run with: ./run.sh (uses bundled libraries with system fallback)"
-          echo "Or install GStreamer system-wide and run ./opennow-streamer directly"
 
       # ==================== Upload Artifacts ====================
 
@@ -1207,7 +1163,8 @@ jobs:
         if: matrix.target == 'linux-arm64'
         shell: bash
         run: |
-          cd opennow-streamer/target/aarch64-unknown-linux-gnu/release
+          # Native ARM64 build - binary is in target/release (not target/aarch64-unknown-linux-gnu/release)
+          cd opennow-streamer/target/release
           zip -r "OpenNOW-linux-arm64.zip" bundle/
 
       - name: Upload Linux ARM64 artifacts
@@ -1215,7 +1172,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: opennow-streamer-${{ needs.get-version.outputs.version }}-linux-arm64
-          path: opennow-streamer/target/aarch64-unknown-linux-gnu/release/OpenNOW-linux-arm64.zip
+          path: opennow-streamer/target/release/OpenNOW-linux-arm64.zip
           retention-days: 30
 
       # ==================== Upload to GitHub Release (main branch only) ====================
@@ -1326,7 +1283,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.get-version.outputs.version }}
-          files: opennow-streamer/target/aarch64-unknown-linux-gnu/release/OpenNOW-linux-arm64.zip
+          # Native ARM64 build - binary is in target/release (not target/aarch64-unknown-linux-gnu/release)
+          files: opennow-streamer/target/release/OpenNOW-linux-arm64.zip
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
