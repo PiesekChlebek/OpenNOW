@@ -266,21 +266,28 @@ impl ControllerManager {
                                 );
                                 excluded_devices.push(id);
                             } else {
+                                gamepad_count += 1;
                                 info!(
-                                    "Gamepad connected: {} (id={})",
+                                    "Gamepad connected: {} (id={}) - total: {}",
                                     gamepad.name(),
-                                    controller_id
+                                    controller_id,
+                                    gamepad_count
                                 );
                             }
                         }
                         EventType::Disconnected => {
                             // Remove from wheel/excluded lists if it was there
+                            let was_excluded = excluded_devices.contains(&id);
                             excluded_devices.retain(|&x| x != id);
                             wheel_devices.retain(|&x| x != id);
+                            if !was_excluded && gamepad_count > 0 {
+                                gamepad_count -= 1;
+                            }
                             info!(
-                                "Device disconnected: {} (id={})",
+                                "Device disconnected: {} (id={}) - remaining: {}",
                                 gamepad.name(),
-                                controller_id
+                                controller_id,
+                                gamepad_count
                             );
                         }
                         _ => {
@@ -570,8 +577,17 @@ impl ControllerManager {
                     }
                 }
 
-                // Poll sleep - 1ms for 1000Hz polling rate (low latency)
-                std::thread::sleep(Duration::from_millis(1));
+                // Poll sleep - adaptive rate based on activity
+                // When controllers are connected and active: 4ms (~250Hz, sufficient for gaming)
+                // When no controllers or idle: 100ms (save CPU)
+                // Note: 250Hz is enough for even competitive gaming; 1000Hz was excessive
+                let has_active_controllers = gamepad_count > 0;
+                let sleep_duration = if has_active_controllers {
+                    Duration::from_millis(4) // 250Hz when controllers connected
+                } else {
+                    Duration::from_millis(100) // 10Hz when idle (just checking for new connections)
+                };
+                std::thread::sleep(sleep_duration);
             }
 
             info!(

@@ -450,6 +450,8 @@ impl App {
                 }
             }
             UiAction::LaunchGameDirect(game) => {
+                // Close the popup first
+                self.selected_game_popup = None;
                 self.launch_game(&game);
             }
             UiAction::StopStreaming => {
@@ -666,10 +668,11 @@ impl App {
                 self.selected_queue_server = server_id;
             }
             UiAction::LaunchWithServer(game, server_id) => {
-                // Close modal and launch game
+                // Close modal and popup, then launch game
                 self.show_server_selection = false;
                 self.selected_queue_server = None;
                 self.pending_server_selection_game = None;
+                self.selected_game_popup = None;
                 // Note: The backend API currently does not support explicit server selection.
                 // The selected server_id is recorded for logging/telemetry only; the server
                 // used for the session will still be chosen automatically by the backend.
@@ -849,6 +852,19 @@ impl App {
                         self.api_client
                             .set_access_token(new_tokens.jwt().to_string());
                         self.token_refresh_in_progress = false;
+                    }
+                }
+            }
+        }
+
+        // Check for updated popup game details from async fetch
+        if self.selected_game_popup.is_some() {
+            if let Some(updated_game) = cache::load_popup_game_details() {
+                // Only update if it's the same game (by ID)
+                if let Some(ref current) = self.selected_game_popup {
+                    if current.id == updated_game.id {
+                        info!("Updated popup with fetched details: {}", updated_game.title);
+                        self.selected_game_popup = Some(updated_game);
                     }
                 }
             }

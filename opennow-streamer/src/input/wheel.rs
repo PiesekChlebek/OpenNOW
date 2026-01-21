@@ -217,8 +217,9 @@ mod windows_impl {
                         }
                     }
 
-                    // Poll at 1000Hz for low latency
-                    std::thread::sleep(Duration::from_millis(1));
+                    // Poll at 250Hz for racing wheels - sufficient for smooth steering
+                    // 1000Hz was excessive and wasted CPU cycles
+                    std::thread::sleep(Duration::from_millis(4));
                 }
 
                 info!(
