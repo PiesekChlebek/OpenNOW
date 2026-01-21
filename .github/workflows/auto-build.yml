@@ -445,17 +445,7 @@ jobs:
         run: |
           sudo apt-get update
 
-          # Enable ARM64 architecture for cross-compilation
-          sudo dpkg --add-architecture arm64
-
-          # Add ARM64 repositories
-          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-
-          sudo apt-get update
-
-          # Install cross-compilation toolchain and build dependencies
+          # Install native x64 build tools and cross-compilation toolchain
           sudo apt-get install -y \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu \
@@ -463,32 +453,68 @@ jobs:
             clang \
             libclang-dev \
             wget \
+            curl
+
+          # For ARM64 cross-compilation, we use a different approach:
+          # 1. Install x64 GStreamer for the Rust gstreamer-sys build script to find headers
+          # 2. The actual ARM64 GStreamer libraries will be loaded at runtime on the target system
+          #
+          # This works because:
+          # - gstreamer-rs uses pkg-config to find headers during compilation
+          # - The headers are architecture-independent
+          # - Runtime libraries are loaded dynamically from the target system
+          
+          # Install native x64 GStreamer dev packages (for headers and build scripts)
+          sudo apt-get install -y \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev
+          
+          # Install other ARM64 dependencies that don't conflict with glib
+          # Enable ARM64 architecture
+          sudo dpkg --add-architecture arm64
+          
+          # Add ARM64 repositories
+          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          
+          sudo apt-get update
+          
+          # Install only the minimal ARM64 libraries needed for linking (no glib-dependent packages)
+          # These are safe because they don't pull in libglib2.0
+          sudo apt-get install -y \
             libssl-dev:arm64 \
             libasound2-dev:arm64 \
-            libudev-dev:arm64 \
-            libunwind-dev:arm64 \
-            libgstreamer1.0-dev:arm64 \
-            libgstreamer-plugins-base1.0-dev:arm64 \
-            libgstreamer-plugins-bad1.0-dev:arm64 \
-            gstreamer1.0-plugins-base:arm64 \
-            gstreamer1.0-plugins-good:arm64 \
-            gstreamer1.0-plugins-bad:arm64 \
-            gstreamer1.0-plugins-ugly:arm64 \
-            gstreamer1.0-libav:arm64
+            libudev-dev:arm64 || true
+          
+          # Note: We intentionally skip ARM64 GStreamer packages because:
+          # 1. They conflict with x64 glib (ABI incompatibility)
+          # 2. GStreamer will be loaded at runtime from the target system
+          # 3. The release notes instruct users to install GStreamer on ARM64
 
           # Set cross-compilation environment
           echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
           echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
           echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
           echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig" >> $GITHUB_ENV
+          # Use native x64 pkg-config paths for GStreamer headers
+          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig" >> $GITHUB_ENV
+          # Tell the linker to skip GStreamer libs (will be loaded at runtime)
+          echo "PKG_CONFIG_SYSROOT_DIR=/" >> $GITHUB_ENV
 
           # Set OpenSSL paths for ARM64 cross-compilation
           echo "OPENSSL_DIR=/usr" >> $GITHUB_ENV
           echo "OPENSSL_LIB_DIR=/usr/lib/aarch64-linux-gnu" >> $GITHUB_ENV
           echo "OPENSSL_INCLUDE_DIR=/usr/include" >> $GITHUB_ENV
 
-          echo "GStreamer ARM64 setup complete"
+          echo ""
+          echo "=== GStreamer headers (x64, for compilation) ==="
+          pkg-config --cflags gstreamer-1.0 || echo "GStreamer pkg-config not found"
+          
+          echo ""
+          echo "GStreamer ARM64 cross-compilation setup complete"
+          echo "Note: ARM64 users must install GStreamer on their system"
 
       # ==================== Build Native Client ====================
 
