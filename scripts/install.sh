@@ -120,6 +120,23 @@ install_gstreamer() {
             ;;
         apt)
             log_info "Installing GStreamer via apt..."
+            
+            # Check Ubuntu/Debian version for PPA support
+            if command -v lsb_release &> /dev/null; then
+                DISTRO=$(lsb_release -is 2>/dev/null || echo "unknown")
+                VERSION=$(lsb_release -rs 2>/dev/null || echo "0")
+                
+                # Add GStreamer PPA for newer versions on Ubuntu 22.04/24.04
+                # Ubuntu 22.04 ships with outdated GStreamer 1.20.x
+                # This PPA provides GStreamer 1.24.x with better codec support
+                if [[ "$DISTRO" == "Ubuntu" ]]; then
+                    log_info "Ubuntu $VERSION detected - adding GStreamer PPA for newer version..."
+                    sudo apt-get update
+                    sudo apt-get install -y software-properties-common
+                    sudo add-apt-repository -y ppa:ubuntuhandbook1/gstreamer || log_warn "PPA add failed, using distro version"
+                fi
+            fi
+            
             sudo apt-get update
             sudo apt-get install -y \
                 gstreamer1.0-plugins-base \
@@ -127,6 +144,7 @@ install_gstreamer() {
                 gstreamer1.0-plugins-bad \
                 gstreamer1.0-plugins-ugly \
                 gstreamer1.0-libav \
+                gstreamer1.0-vaapi \
                 gstreamer1.0-tools
             ;;
         dnf)
